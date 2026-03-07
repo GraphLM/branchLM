@@ -47,7 +47,7 @@ export function createChatNode(params: {
     id: chatId,
     type: 'chat',
     position,
-    draggable: false,
+    draggable: true,
     selectable: true,
     data: {
       chatId,

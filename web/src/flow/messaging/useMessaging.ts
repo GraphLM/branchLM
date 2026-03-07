@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import { type OnNodesChange, type XYPosition } from '@xyflow/react'
 
 import {
   computeChatPosition,
@@ -15,6 +16,12 @@ type UseMessagingReturn = {
   isSubmitting: boolean
   setComposerText: (value: string) => void
   createChatFromComposer: () => Promise<void>
+  createBranchChatFromMessage: (params: {
+    sourceMessageId: string
+    position: XYPosition
+  }) => Promise<string | null>
+  updateChatPosition: (chatId: string, position: XYPosition) => void
+  onNodesChange: OnNodesChange<FlowNode>
   deleteNodeById: (nodeId: string) => Promise<void>
 }
 
@@ -47,6 +54,10 @@ export function useMessaging(): UseMessagingReturn {
   const updateChatDraft = useCallback((chatId: string, draft: string) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, draft } : chat)))
     void messagingApi.updateChat(chatId, { draft })
+  }, [])
+
+  const updateChatPosition = useCallback((chatId: string, position: XYPosition) => {
+    setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat)))
   }, [])
 
   const deleteChat = useCallback(async (chatId: string) => {
@@ -85,29 +96,33 @@ export function useMessaging(): UseMessagingReturn {
       }
 
       setIsSubmitting(true)
+      try {
+        const chatMessages = normalizeMessages(messages, chatId)
+        const userMessage = await messagingApi.createMessage({
+          chatId,
+          text: input,
+          role: 'user',
+          ordinal: chatMessages.length,
+        })
+        const reply = createMockReply(input)
+        const appMessage = await messagingApi.createMessage({
+          chatId,
+          text: reply.text,
+          role: reply.role,
+          ordinal: chatMessages.length + 1,
+        })
 
-      const chatMessages = normalizeMessages(messages, chatId)
-      const userMessage = await messagingApi.createMessage({
-        chatId,
-        text: input,
-        role: 'user',
-        ordinal: chatMessages.length,
-      })
-      const reply = createMockReply(input)
-      const appMessage = await messagingApi.createMessage({
-        chatId,
-        text: reply.text,
-        role: reply.role,
-        ordinal: chatMessages.length + 1,
-      })
+        setMessages((prev) => {
+          const otherMessages = prev.filter((message) => message.chatId !== chatId)
+          return [...otherMessages, ...chatMessages, userMessage, appMessage]
+        })
 
-      setMessages((prev) => {
-        const otherMessages = prev.filter((message) => message.chatId !== chatId)
-        return [...otherMessages, ...chatMessages, userMessage, appMessage]
-      })
-
-      setChats((prev) => prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)))
-      setIsSubmitting(false)
+        setChats((prev) =>
+          prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)),
+        )
+      } finally {
+        setIsSubmitting(false)
+      }
     },
     [chats, messages],
   )
@@ -119,34 +134,60 @@ export function useMessaging(): UseMessagingReturn {
     }
 
     setIsSubmitting(true)
+    try {
+      const nextChatTitle = `Chat ${chats.length + 1}`
 
-    const nextChatTitle = `Chat ${chats.length + 1}`
+      const newChat = await messagingApi.createChat({
+        title: nextChatTitle,
+        draft: '',
+      })
 
-    const newChat = await messagingApi.createChat({
-      title: nextChatTitle,
-      draft: '',
-    })
+      const userMessage = await messagingApi.createMessage({
+        chatId: newChat.id,
+        text: input,
+        role: 'user',
+        ordinal: 0,
+      })
 
-    const userMessage = await messagingApi.createMessage({
-      chatId: newChat.id,
-      text: input,
-      role: 'user',
-      ordinal: 0,
-    })
+      const reply = createMockReply(input)
+      const appMessage = await messagingApi.createMessage({
+        chatId: newChat.id,
+        text: reply.text,
+        role: reply.role,
+        ordinal: 1,
+      })
 
-    const reply = createMockReply(input)
-    const appMessage = await messagingApi.createMessage({
-      chatId: newChat.id,
-      text: reply.text,
-      role: reply.role,
-      ordinal: 1,
-    })
-
-    setChats((prev) => [...prev, newChat])
-    setMessages((prev) => [...prev, userMessage, appMessage])
-    setComposerText('')
-    setIsSubmitting(false)
+      setChats((prev) => [...prev, newChat])
+      setMessages((prev) => [...prev, userMessage, appMessage])
+      setComposerText('')
+    } finally {
+      setIsSubmitting(false)
+    }
   }, [composerText, chats.length])
+
+  const createBranchChatFromMessage = useCallback(
+    async (params: { sourceMessageId: string; position: XYPosition }) => {
+      const sourceMessage = messages.find((message) => message.id === params.sourceMessageId)
+      if (!sourceMessage) {
+        return null
+      }
+
+      setIsSubmitting(true)
+      try {
+        const newChat = await messagingApi.createChat({
+          title: `Branch ${chats.length + 1}`,
+          draft: '',
+          position: params.position,
+        })
+
+        setChats((prev) => [...prev, newChat])
+        return newChat.id
+      } finally {
+        setIsSubmitting(false)
+      }
+    },
+    [messages, chats.length],
+  )
 
   const nodes = useMemo<FlowNode[]>(() => {
     return chats.flatMap((chat, index) => {
@@ -159,7 +200,7 @@ export function useMessaging(): UseMessagingReturn {
           draft: chat.draft,
         },
         messageCount: chatMessages.length,
-        position: computeChatPosition(index),
+        position: chat.position ?? computeChatPosition(index),
         ui: {
           onUpdateTitle: updateChatTitle,
           onUpdateDraft: updateChatDraft,
@@ -207,12 +248,68 @@ export function useMessaging(): UseMessagingReturn {
     [chats, messages, deleteChat, deleteMessage],
   )
 
+  const onNodesChange: OnNodesChange<FlowNode> = useCallback((changes) => {
+    setChats((prevChats) => {
+      const chatIds = new Set(prevChats.map((chat) => chat.id))
+      const positionByChatId = new Map<string, XYPosition>()
+
+      for (const change of changes) {
+        if (change.type !== 'position') {
+          continue
+        }
+
+        if (!chatIds.has(change.id)) {
+          continue
+        }
+
+        const nextPosition = change.position ?? change.positionAbsolute
+        if (!nextPosition) {
+          continue
+        }
+
+        positionByChatId.set(change.id, nextPosition)
+      }
+
+      if (positionByChatId.size === 0) {
+        return prevChats
+      }
+
+      let didChange = false
+      const nextChats = prevChats.map((chat) => {
+        const nextPosition = positionByChatId.get(chat.id)
+        if (!nextPosition) {
+          return chat
+        }
+
+        const currentPosition = chat.position
+        if (
+          currentPosition &&
+          currentPosition.x === nextPosition.x &&
+          currentPosition.y === nextPosition.y
+        ) {
+          return chat
+        }
+
+        didChange = true
+        return {
+          ...chat,
+          position: nextPosition,
+        }
+      })
+
+      return didChange ? nextChats : prevChats
+    })
+  }, [])
+
   return {
     nodes,
     composerText,
     isSubmitting,
     setComposerText,
     createChatFromComposer,
+    createBranchChatFromMessage,
+    updateChatPosition,
+    onNodesChange,
     deleteNodeById,
   }
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { FormEvent } from 'react'
+import type { FormEvent, ReactNode } from 'react'
 
 import { NodeDeleteButton } from '../../ui/NodeDeleteButton'
 import { SendButton } from '../../ui/SendButton'
@@ -12,6 +12,7 @@ type ChatCardProps = {
   onUpdateDraft: (chatId: string, draft: string) => void
   onSendMessage: (chatId: string) => void
   onDeleteChat: (chatId: string) => void
+  targetHandle?: ReactNode
 }
 
 export function ChatCard({
@@ -22,6 +23,7 @@ export function ChatCard({
   onUpdateDraft,
   onSendMessage,
   onDeleteChat,
+  targetHandle,
 }: ChatCardProps) {
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [editableTitle, setEditableTitle] = useState(title)
@@ -42,6 +44,7 @@ export function ChatCard({
 
   return (
     <div className="relative h-full w-full">
+      {targetHandle}
       <div className="absolute -top-4 left-3 right-3 z-20 flex items-center justify-between">
         {isEditingTitle ? (
           <input
