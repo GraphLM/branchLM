@@ -18,12 +18,15 @@ function persistCascadeDeletes(params: {
   chatIds: Set<string>;
   messageIds: Set<string>;
 }) {
-  for (const chatId of params.chatIds) {
-    deleteChat({ workspaceId: params.workspaceId, chatId }).catch(() => {});
-  }
-  for (const messageId of params.messageIds) {
-    deleteMessage({ workspaceId: params.workspaceId, messageId }).catch(() => {});
-  }
+  void (async () => {
+    // Delete leaf messages first so we do not hit 404s after chat-level cascades.
+    for (const messageId of params.messageIds) {
+      await deleteMessage({ workspaceId: params.workspaceId, messageId }).catch(() => {});
+    }
+    for (const chatId of params.chatIds) {
+      await deleteChat({ workspaceId: params.workspaceId, chatId }).catch(() => {});
+    }
+  })();
 }
 
 export function useGraph(params: {
