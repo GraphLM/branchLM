@@ -43,6 +43,7 @@ function getClientPointFromEvent(
 function CanvasInner() {
   const {
     nodes,
+    initialEdges,
     composerText,
     isSubmitting,
     setComposerText,
@@ -50,24 +51,33 @@ function CanvasInner() {
     createBranchChatFromMessage,
     onNodesChange,
     updateChatPosition,
+    syncContextEdges,
     deleteNodeById,
   } = useMessaging()
   const { screenToFlowPosition } = useReactFlow()
   const [edges, setEdges] = useState<Edge[]>([])
   const connectStartNodeIdRef = useRef<string | null>(null)
 
+  useEffect(() => {
+    setEdges(initialEdges)
+  }, [initialEdges])
+
   const handleNodesDelete = useCallback(
     (deletedNodes: Node[]) => {
       const deletedNodeIds = new Set(deletedNodes.map((node) => node.id))
-      setEdges((prev) =>
-        prev.filter((edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target)),
-      )
+      setEdges((prev) => {
+        const nextEdges = prev.filter(
+          (edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target),
+        )
+        syncContextEdges(nextEdges)
+        return nextEdges
+      })
 
       for (const node of deletedNodes) {
         void deleteNodeById(node.id)
       }
     },
-    [deleteNodeById],
+    [deleteNodeById, syncContextEdges],
   )
 
   const handleConnect: OnConnect = useCallback(
@@ -92,10 +102,15 @@ function CanvasInner() {
           return prev
         }
 
-        return addEdge(createContextEdge({ sourceId: connection.source!, targetId: connection.target! }), prev)
+        const nextEdges = addEdge(
+          createContextEdge({ sourceId: connection.source!, targetId: connection.target! }),
+          prev,
+        )
+        syncContextEdges(nextEdges)
+        return nextEdges
       })
     },
-    [nodes],
+    [nodes, syncContextEdges],
   )
 
   const handleConnectStart: OnConnectStart = useCallback((_event, nodeHandle) => {
@@ -125,9 +140,13 @@ function CanvasInner() {
         return
       }
 
-      setEdges((prev) => addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev))
+      setEdges((prev) => {
+        const nextEdges = addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev)
+        syncContextEdges(nextEdges)
+        return nextEdges
+      })
     },
-    [createBranchChatFromMessage, nodes, screenToFlowPosition],
+    [createBranchChatFromMessage, nodes, screenToFlowPosition, syncContextEdges],
   )
 
   useEffect(() => {
@@ -136,9 +155,12 @@ function CanvasInner() {
       const filtered = prev.filter(
         (edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target),
       )
+      if (filtered.length !== prev.length) {
+        syncContextEdges(filtered)
+      }
       return filtered.length === prev.length ? prev : filtered
     })
-  }, [nodes])
+  }, [nodes, syncContextEdges])
 
   const handleNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {
@@ -174,7 +196,11 @@ function CanvasInner() {
               return
             }
 
-            setEdges((prev) => prev.filter((edge) => !removeIds.has(edge.id)))
+            setEdges((prev) => {
+              const nextEdges = prev.filter((edge) => !removeIds.has(edge.id))
+              syncContextEdges(nextEdges)
+              return nextEdges
+            })
           }}
           nodes={nodes}
           onNodesChange={onNodesChange}
