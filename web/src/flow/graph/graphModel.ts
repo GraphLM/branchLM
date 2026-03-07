@@ -1,5 +1,14 @@
 import { type Edge } from "@xyflow/react";
-import { computeChatHeight, getMessagePosition } from "../layout";
+import {
+  CHAT_FOOTER_PADDING,
+  CHAT_HEADER_HEIGHT,
+  CHAT_MIN_HEIGHT,
+  CHAT_PADDING,
+  MESSAGE_GAP_Y,
+  estimateChatInputHeight,
+  estimateMessageHeight,
+  getMessagePosition,
+} from "../layout";
 import type { AppNode, MessageNode as MessageFlowNode } from "../types";
 
 export function buildChatPositions(nodes: AppNode[]): Record<string, { x: number; y: number }> {
@@ -22,17 +31,24 @@ export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
   }
 
   const messageLayout = new Map<string, { position: { x: number; y: number } }>();
-  const messageCounts = new Map<string, number>();
+  const messageBottomByChat = new Map<string, number>();
 
   for (const [chatId, msgs] of messagesByChat.entries()) {
     const sorted = msgs.slice().sort((a, b) => a.data.ordinal - b.data.ordinal);
+    const baseY = CHAT_HEADER_HEIGHT + CHAT_PADDING;
+    let offsetY = 0;
 
-    messageCounts.set(chatId, sorted.length);
-    sorted.forEach((m, idx) => {
+    sorted.forEach((m) => {
+      const estimatedHeight = estimateMessageHeight({ text: m.data.text, role: m.data.role });
+      const x = getMessagePosition({ indexInChat: 0, role: m.data.role }).x;
       messageLayout.set(m.id, {
-        position: getMessagePosition({ indexInChat: idx, role: m.data.role }),
+        position: { x, y: baseY + offsetY },
       });
+      offsetY += estimatedHeight + MESSAGE_GAP_Y;
     });
+
+    const messageContentBottom = baseY + Math.max(0, offsetY - MESSAGE_GAP_Y);
+    messageBottomByChat.set(chatId, messageContentBottom);
   }
 
   return nodes.map((n) => {
@@ -43,11 +59,12 @@ export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
     }
 
     if (n.type === "chat") {
-      const count = messageCounts.get(n.id) ?? 0;
-      const height = computeChatHeight(count);
+      const inputHeight = estimateChatInputHeight(n.data.draft);
+      const messageContentBottom = messageBottomByChat.get(n.id) ?? CHAT_HEADER_HEIGHT + CHAT_PADDING;
+      const contentDrivenHeight = messageContentBottom + CHAT_FOOTER_PADDING + inputHeight;
       const style = {
         ...(typeof n.style === "object" ? n.style : {}),
-        height,
+        height: Math.max(CHAT_MIN_HEIGHT, contentDrivenHeight),
       };
       return { ...n, style };
     }

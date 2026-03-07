@@ -32,7 +32,7 @@ export default function ChatCard(props: Props) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
-  const draftInputRef = useRef<HTMLInputElement | null>(null);
+  const draftInputRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(title);
@@ -54,6 +54,13 @@ export default function ChatCard(props: Props) {
     }, 0);
     return () => window.clearTimeout(t);
   }, [focusToken]);
+
+  useEffect(() => {
+    const el = draftInputRef.current;
+    if (!el) return;
+    el.style.height = "0px";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [draft]);
 
   const commitTitle = () => {
     const next = titleDraft.trim();
@@ -113,14 +120,15 @@ export default function ChatCard(props: Props) {
       >
         {targetHandle}
 
-        <div className="absolute left-2 right-2 bottom-2 flex items-center rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1">
-          <input
+        <div className="absolute left-2 right-2 bottom-2 flex items-stretch rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1">
+          <textarea
             ref={draftInputRef}
-            className="nodrag flex-1 bg-transparent px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none"
+            rows={1}
+            className="nodrag nowheel max-h-40 flex-1 resize-none overflow-y-auto bg-transparent px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none"
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key !== "Enter") return;
+              if (e.key !== "Enter" || e.shiftKey) return;
               e.preventDefault();
               e.stopPropagation();
               onSend();
@@ -129,7 +137,7 @@ export default function ChatCard(props: Props) {
             onClick={(e) => e.stopPropagation()}
             placeholder="Send a message…"
           />
-          <SendButton onClick={onSend} />
+          <SendButton onClick={onSend} className="self-stretch" />
         </div>
       </div>
     </div>

@@ -17,8 +17,10 @@ export function useMessaging(params: {
   const updateChatDraft = useCallback(
     (chatId: string, draft: string) => {
       params.setNodes((ns) =>
-        ns.map((n) =>
-          n.id === chatId && n.type === "chat" ? { ...n, data: { ...n.data, draft } } : n,
+        applyAutoLayout(
+          ns.map((n) =>
+            n.id === chatId && n.type === "chat" ? { ...n, data: { ...n.data, draft } } : n,
+          ),
         ),
       );
     },

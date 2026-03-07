@@ -9,7 +9,7 @@ type Props = {
 };
 
 export default function MessageBubble(props: Props) {
-  const { role, text, selected, sourceHandle } = props;
+  const { role, text, sourceHandle } = props;
   const isUser = role === "user";
 
   return (
@@ -19,11 +19,10 @@ export default function MessageBubble(props: Props) {
         isUser
           ? "rounded-xl border bg-(--msg-user-bg) border-(--msg-user-border) py-1 px-2 elev-1 text-(--msg-fg)"
           : "bg-transparent border-0 rounded-none py-1 px-0 text-(--msg-fg)",
-        selected ? "ring-2 ring-(--selection-ring)" : "",
       ].join(" ")}
       style={{ width: isUser ? MESSAGE_WIDTH : CHAT_WIDTH - CHAT_PADDING * 2 }}
     >
-      <p className="flex-1 whitespace-pre-wrap leading-snug flex items-center">
+      <p className="nodrag nopan flex flex-1 cursor-text select-text items-center whitespace-pre-wrap break-words leading-snug">
         {text}
       </p>
       {sourceHandle}
