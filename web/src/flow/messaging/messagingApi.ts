@@ -11,11 +11,16 @@ function nextId(prefix: string): string {
 }
 
 export const messagingApi = {
-  async createChat(params: { title: string; draft: string }): Promise<ChatRecord> {
+  async createChat(params: {
+    title: string
+    draft: string
+    position?: ChatRecord['position']
+  }): Promise<ChatRecord> {
     return delay({
       id: nextId('chat'),
       title: params.title,
       draft: params.draft,
+      position: params.position,
     })
   },
 

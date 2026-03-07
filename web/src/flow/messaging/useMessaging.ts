@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
+import type { XYPosition } from '@xyflow/react'
 
 import {
   computeChatPosition,
@@ -15,6 +16,10 @@ type UseMessagingReturn = {
   isSubmitting: boolean
   setComposerText: (value: string) => void
   createChatFromComposer: () => Promise<void>
+  createBranchChatFromMessage: (params: {
+    sourceMessageId: string
+    position: XYPosition
+  }) => Promise<string | null>
   deleteNodeById: (nodeId: string) => Promise<void>
 }
 
@@ -148,6 +153,28 @@ export function useMessaging(): UseMessagingReturn {
     setIsSubmitting(false)
   }, [composerText, chats.length])
 
+  const createBranchChatFromMessage = useCallback(
+    async (params: { sourceMessageId: string; position: XYPosition }) => {
+      const sourceMessage = messages.find((message) => message.id === params.sourceMessageId)
+      if (!sourceMessage) {
+        return null
+      }
+
+      setIsSubmitting(true)
+
+      const newChat = await messagingApi.createChat({
+        title: `Branch ${chats.length + 1}`,
+        draft: '',
+        position: params.position,
+      })
+
+      setChats((prev) => [...prev, newChat])
+      setIsSubmitting(false)
+      return newChat.id
+    },
+    [messages, chats.length],
+  )
+
   const nodes = useMemo<FlowNode[]>(() => {
     return chats.flatMap((chat, index) => {
       const chatMessages = normalizeMessages(messages, chat.id)
@@ -159,7 +186,7 @@ export function useMessaging(): UseMessagingReturn {
           draft: chat.draft,
         },
         messageCount: chatMessages.length,
-        position: computeChatPosition(index),
+        position: chat.position ?? computeChatPosition(index),
         ui: {
           onUpdateTitle: updateChatTitle,
           onUpdateDraft: updateChatDraft,
@@ -213,6 +240,7 @@ export function useMessaging(): UseMessagingReturn {
     isSubmitting,
     setComposerText,
     createChatFromComposer,
+    createBranchChatFromMessage,
     deleteNodeById,
   }
 }

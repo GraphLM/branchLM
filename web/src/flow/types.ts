@@ -1,4 +1,4 @@
-import type { Node } from '@xyflow/react'
+import type { Node, XYPosition } from '@xyflow/react'
 
 export type MessageRole = 'user' | 'app'
 
@@ -34,6 +34,7 @@ export type ChatRecord = {
   id: string
   title: string
   draft: string
+  position?: XYPosition
 }
 
 export type MessageRecord = {
