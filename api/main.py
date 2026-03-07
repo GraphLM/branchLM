@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import chats, health
+from routers import chats, graph, health
 from settings import Settings
 from store.memory import MemoryStore
 
@@ -51,6 +51,7 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(health.router)
+    app.include_router(graph.router)
     app.include_router(chats.router)
 
     return app

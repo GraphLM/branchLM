@@ -25,6 +25,8 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 
 - `GET /health` (also `/api/health`)
 - `POST /api/chats` (create a chat node)
+- `GET /api/graph` (load chats, messages, context edges)
+- `PUT /api/graph/layout` (persist chat positions + context edges)
 
 ## Auth for `/api/chats`
 
