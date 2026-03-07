@@ -105,6 +105,24 @@ class SupabaseStore:
         )
         return [row["id"] for row in rows]
 
+    def _workspace_context_node_ids(self, user_id: str, workspace_id: str) -> list[str]:
+        rows = (
+            self._wrap_postgrest(
+                "select workspace context nodes",
+                lambda: (
+                    self._client.table("context_nodes")
+                    .select("id")
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+        return [row["id"] for row in rows]
+
     @staticmethod
     def _is_missing_chat_model_column_error(exc: HTTPException) -> bool:
         detail = str(exc.detail).lower()
@@ -115,11 +133,13 @@ class SupabaseStore:
         )
 
     @staticmethod
-    def _is_missing_context_snapshot_table_error(exc: HTTPException) -> bool:
+    def _is_missing_context_node_table_error(exc: HTTPException) -> bool:
         detail = str(exc.detail).lower()
-        return (
-            "chat_context_messages" in detail and ("pgrst205" in detail or "not found" in detail)
-        ) or ("supabase tables not found" in detail)
+        return ("supabase tables not found" in detail) or (
+            "context_nodes" in detail
+            or "context_node_assets" in detail
+            or "context_node_chat_links" in detail
+        ) and ("pgrst205" in detail or "not found" in detail or "does not exist" in detail)
 
     def workspace_exists(self, user_id: str, workspace_id: str) -> bool:
         rows = (
@@ -383,13 +403,86 @@ class SupabaseStore:
     ) -> list[dict[str, Any]]:
         if not self.chat_exists(user_id, workspace_id, chat_id):
             return []
+        return (
+            self._wrap_postgrest(
+                "select context message snapshots",
+                lambda: (
+                    self._client.table("chat_context_messages")
+                    .select("message_id,role,text,rank")
+                    .eq("user_id", user_id)
+                    .eq("to_chat_id", chat_id)
+                    .order("rank")
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+
+    def list_context_nodes(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
         try:
             return (
                 self._wrap_postgrest(
-                    "select context message snapshots",
+                    "select context nodes",
                     lambda: (
-                        self._client.table("chat_context_messages")
-                        .select("message_id,role,text,rank")
+                        self._client.table("context_nodes")
+                        .select("id,title,position_x,position_y,workspace_id,backboard_thread_id")
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .order("created_at")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                return []
+            raise
+
+    def list_context_node_edges(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        chat_ids = self._workspace_chat_ids(user_id, workspace_id)
+        if not chat_ids:
+            return []
+        try:
+            return (
+                self._wrap_postgrest(
+                    "select context node links",
+                    lambda: (
+                        self._client.table("context_node_chat_links")
+                        .select("from_context_node_id,to_chat_id,rank")
+                        .eq("user_id", user_id)
+                        .in_("to_chat_id", chat_ids)
+                        .order("rank")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                return []
+            raise
+
+    def list_context_nodes_for_chat(
+        self, user_id: str, workspace_id: str, chat_id: str
+    ) -> list[dict[str, Any]]:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            return []
+        try:
+            link_rows = (
+                self._wrap_postgrest(
+                    "select chat context links",
+                    lambda: (
+                        self._client.table("context_node_chat_links")
+                        .select("from_context_node_id,rank")
                         .eq("user_id", user_id)
                         .eq("to_chat_id", chat_id)
                         .order("rank")
@@ -400,8 +493,58 @@ class SupabaseStore:
                 )
                 or []
             )
+            if not link_rows:
+                return []
+            node_ids = [row["from_context_node_id"] for row in link_rows]
+            node_rows = (
+                self._wrap_postgrest(
+                    "select context nodes for chat",
+                    lambda: (
+                        self._client.table("context_nodes")
+                        .select("id,title,workspace_id,backboard_thread_id")
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .in_("id", node_ids)
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+            by_id = {row["id"]: row for row in node_rows}
+            return [by_id[node_id] for node_id in node_ids if node_id in by_id]
         except HTTPException as exc:
-            if self._is_missing_context_snapshot_table_error(exc):
+            if self._is_missing_context_node_table_error(exc):
+                return []
+            raise
+
+    def list_context_node_assets(
+        self, user_id: str, workspace_id: str, context_node_id: str
+    ) -> list[dict[str, Any]]:
+        try:
+            if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+                return []
+            return (
+                self._wrap_postgrest(
+                    "select context node assets",
+                    lambda: (
+                        self._client.table("context_node_assets")
+                        .select(
+                            "id,file_name,mime_type,size_bytes,backboard_document_id,status,status_message"
+                        )
+                        .eq("user_id", user_id)
+                        .eq("context_node_id", context_node_id)
+                        .order("created_at")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
                 return []
             raise
 
@@ -482,6 +625,116 @@ class SupabaseStore:
                 .execute()
             ),
         )
+
+    def create_context_node(
+        self,
+        user_id: str,
+        workspace_id: str,
+        title: str,
+        position_x: float,
+        position_y: float,
+        backboard_thread_id: str | None,
+    ) -> dict[str, Any]:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        try:
+            created = self._wrap_postgrest(
+                "insert context node",
+                lambda: (
+                    self._client.table("context_nodes")
+                    .insert(
+                        {
+                            "user_id": user_id,
+                            "workspace_id": workspace_id,
+                            "title": title,
+                            "position_x": position_x,
+                            "position_y": position_y,
+                            "backboard_thread_id": backboard_thread_id,
+                        }
+                    )
+                    .execute()
+                    .data
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+        if not created:
+            raise HTTPException(status_code=500, detail="Failed to create context node")
+        return created[0]
+
+    def delete_context_node(self, user_id: str, workspace_id: str, context_node_id: str) -> None:
+        if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        try:
+            self._wrap_postgrest(
+                "delete context node",
+                lambda: (
+                    self._client.table("context_nodes")
+                    .delete()
+                    .eq("id", context_node_id)
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+
+    def create_context_node_asset(
+        self,
+        user_id: str,
+        workspace_id: str,
+        context_node_id: str,
+        file_name: str,
+        mime_type: str,
+        size_bytes: int,
+        backboard_document_id: str | None,
+        status: str,
+        status_message: str | None,
+    ) -> dict[str, Any]:
+        if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        try:
+            created = self._wrap_postgrest(
+                "insert context node asset",
+                lambda: (
+                    self._client.table("context_node_assets")
+                    .insert(
+                        {
+                            "user_id": user_id,
+                            "context_node_id": context_node_id,
+                            "file_name": file_name,
+                            "mime_type": mime_type,
+                            "size_bytes": size_bytes,
+                            "backboard_document_id": backboard_document_id,
+                            "status": status,
+                            "status_message": status_message,
+                        }
+                    )
+                    .execute()
+                    .data
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+        if not created:
+            raise HTTPException(status_code=500, detail="Failed to create context node asset")
+        return created[0]
 
     def create_message(
         self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str
@@ -586,6 +839,38 @@ class SupabaseStore:
                 ),
             )
 
+    def update_context_node_positions(
+        self,
+        user_id: str,
+        workspace_id: str,
+        positions: dict[str, tuple[float, float]],
+    ) -> None:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+        try:
+            context_node_ids = set(self._workspace_context_node_ids(user_id, workspace_id))
+            if not context_node_ids:
+                return
+            now = datetime.now(timezone.utc).isoformat()
+            for context_node_id, (x, y) in positions.items():
+                if context_node_id not in context_node_ids:
+                    continue
+                self._wrap_postgrest(
+                    "update context node layout",
+                    lambda context_node_id=context_node_id, x=x, y=y: (
+                        self._client.table("context_nodes")
+                        .update({"position_x": x, "position_y": y, "updated_at": now})
+                        .eq("id", context_node_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .execute()
+                    ),
+                )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                return
+            raise
+
     def replace_context_edges(
         self, user_id: str, workspace_id: str, edges: list[dict[str, Any]]
     ) -> None:
@@ -602,20 +887,16 @@ class SupabaseStore:
                     .execute()
                 ),
             )
-            try:
-                self._wrap_postgrest(
-                    "delete context snapshots",
-                    lambda: (
-                        self._client.table("chat_context_messages")
-                        .delete()
-                        .eq("user_id", user_id)
-                        .in_("to_chat_id", chat_ids)
-                        .execute()
-                    ),
-                )
-            except HTTPException as exc:
-                if not self._is_missing_context_snapshot_table_error(exc):
-                    raise
+            self._wrap_postgrest(
+                "delete context snapshots",
+                lambda: (
+                    self._client.table("chat_context_messages")
+                    .delete()
+                    .eq("user_id", user_id)
+                    .in_("to_chat_id", chat_ids)
+                    .execute()
+                ),
+            )
 
         if not edges:
             return
@@ -681,13 +962,64 @@ class SupabaseStore:
                     rank += 1
 
         if snapshot_rows:
+            self._wrap_postgrest(
+                "insert context snapshots",
+                lambda: (
+                    self._client.table("chat_context_messages").insert(snapshot_rows).execute()
+                ),
+            )
+
+    def replace_context_node_edges(
+        self, user_id: str, workspace_id: str, edges: list[dict[str, Any]]
+    ) -> None:
+        chat_ids = self._workspace_chat_ids(user_id, workspace_id)
+        try:
+            context_node_ids = self._workspace_context_node_ids(user_id, workspace_id)
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                return
+            raise
+
+        if chat_ids:
             try:
                 self._wrap_postgrest(
-                    "insert context snapshots",
+                    "delete context node links",
                     lambda: (
-                        self._client.table("chat_context_messages").insert(snapshot_rows).execute()
+                        self._client.table("context_node_chat_links")
+                        .delete()
+                        .eq("user_id", user_id)
+                        .in_("to_chat_id", chat_ids)
+                        .execute()
                     ),
                 )
             except HTTPException as exc:
-                if not self._is_missing_context_snapshot_table_error(exc):
+                if not self._is_missing_context_node_table_error(exc):
                     raise
+
+        if not edges:
+            return
+
+        rows = []
+        for edge in edges:
+            if edge["to_chat_id"] not in chat_ids:
+                continue
+            if edge["from_context_node_id"] not in context_node_ids:
+                continue
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "from_context_node_id": edge["from_context_node_id"],
+                    "to_chat_id": edge["to_chat_id"],
+                    "rank": edge["rank"],
+                }
+            )
+        if not rows:
+            return
+        try:
+            self._wrap_postgrest(
+                "insert context node links",
+                lambda: self._client.table("context_node_chat_links").insert(rows).execute(),
+            )
+        except HTTPException as exc:
+            if not self._is_missing_context_node_table_error(exc):
+                raise

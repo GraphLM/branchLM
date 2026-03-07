@@ -14,6 +14,7 @@ from schemas import (
     PatchChatBody,
     PatchWorkspaceBody,
 )
+from services.backboard_service import BackboardClient, BackboardServiceError
 from services.llm_service import LLMConfigurationError, LLMServiceError, OpenRouterClient
 from services.metrics import AppMetrics
 from services.rate_limit import SlidingWindowRateLimiter
@@ -97,12 +98,14 @@ class ChatGenerationService:
         rate_limiter: SlidingWindowRateLimiter,
         settings: Settings,
         metrics: AppMetrics,
+        backboard: BackboardClient,
     ) -> None:
         self._store = store
         self._llm_client = llm_client
         self._rate_limiter = rate_limiter
         self._settings = settings
         self._metrics = metrics
+        self._backboard = backboard
         self._encoder_cache: dict[str, Any] = {}
 
     def generate_chat_reply(
@@ -192,6 +195,12 @@ class ChatGenerationService:
             workspace_id=workspace_id,
             chat_id=chat_id,
         )
+        external_context = self._build_external_context(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat_id,
+            prompt=prompt,
+        )
 
         input_budget = self._max_input_tokens(model)
         prompt_tokens = self._estimate_tokens(prompt, model=model)
@@ -239,6 +248,8 @@ class ChatGenerationService:
 
         prior_messages = selected_source_context + selected_chat_history
         conversation = [self._to_llm_message(message) for message in prior_messages]
+        if external_context:
+            conversation.insert(0, {"role": "system", "content": external_context})
         if summary_message:
             conversation.insert(0, summary_message)
         conversation.append({"role": "user", "content": prompt})
@@ -263,6 +274,45 @@ class ChatGenerationService:
         )
         return conversation
 
+    def _build_external_context(
+        self, *, user_id: str, workspace_id: str, chat_id: str, prompt: str
+    ) -> str:
+        if not self._backboard.enabled:
+            return ""
+        context_nodes = self._store.list_context_nodes_for_chat(user_id, workspace_id, chat_id)
+        if not context_nodes:
+            return ""
+        snippets: list[str] = []
+        for node in context_nodes[:4]:
+            assets = self._store.list_context_node_assets(user_id, workspace_id, node["id"])
+            if not assets:
+                continue
+            thread_id = str(node.get("backboard_thread_id") or "")
+            if not thread_id:
+                continue
+            try:
+                answer = self._backboard.query_thread(
+                    thread_id=thread_id,
+                    prompt=(
+                        "Using only the uploaded files in this thread, extract the most relevant "
+                        "facts for the query below. Keep it concise. "
+                        "If nothing relevant, say NONE.\n"
+                        f"Query: {prompt}"
+                    ),
+                )
+            except BackboardServiceError as exc:
+                logger.warning("backboard_query_failed node_id=%s error=%s", node.get("id"), exc)
+                continue
+            answer = answer.strip()
+            if not answer or answer.upper() == "NONE":
+                continue
+            snippets.append(f"[Context Node: {node.get('title', 'Untitled')}] {answer}")
+        if not snippets:
+            return ""
+        return "External context retrieved from context nodes:\n" + "\n".join(
+            f"- {snippet}" for snippet in snippets
+        )
+
     def _build_spliced_history(
         self, *, user_id: str, workspace_id: str, chat_id: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
@@ -280,45 +330,7 @@ class ChatGenerationService:
         chat_history = [
             message for message in chat_history_rows if message.get("id") not in source_ids
         ]
-
-        if source_context:
-            return source_context, chat_history
-
-        # Backward-compatible fallback for environments that haven't migrated snapshot storage yet.
-        workspace_messages = self._store.list_messages(user_id, workspace_id)
-        messages_by_id = {message["id"]: message for message in workspace_messages}
-        messages_by_chat: dict[str, list[dict[str, Any]]] = {}
-        for message in workspace_messages:
-            messages_by_chat.setdefault(message["chat_id"], []).append(message)
-        for chat_messages in messages_by_chat.values():
-            chat_messages.sort(key=lambda message: message["ordinal"])
-
-        context_edges = [
-            edge
-            for edge in self._store.list_context_edges(user_id, workspace_id)
-            if edge["to_chat_id"] == chat_id
-        ]
-        context_edges.sort(key=lambda edge: edge["rank"])
-
-        spliced_messages: list[dict[str, Any]] = []
-        seen_message_ids: set[str] = set()
-        for edge in context_edges:
-            source_message = messages_by_id.get(edge["from_message_id"])
-            if not source_message:
-                continue
-            include_until = source_message["ordinal"] - (
-                1 if source_message["role"] == "user" else 0
-            )
-            for message in messages_by_chat.get(source_message["chat_id"], []):
-                if message["ordinal"] > include_until:
-                    break
-                if message["id"] in seen_message_ids:
-                    continue
-                seen_message_ids.add(message["id"])
-                spliced_messages.append(message)
-
-        chat_history = [m for m in chat_history_rows if m.get("id") not in seen_message_ids]
-        return spliced_messages, chat_history
+        return source_context, chat_history
 
     def _call_llm(self, conversation: list[dict[str, str]], *, model: str) -> str:
         current_conversation = conversation
