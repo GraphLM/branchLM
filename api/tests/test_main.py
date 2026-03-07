@@ -3,8 +3,10 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from main import create_app
+from services.backboard_service import BackboardDocumentResult
 from services.llm_service import LLMServiceError
 from services.rate_limit import SlidingWindowRateLimiter
+from store.memory import MemoryStore
 
 DEV_AUTH_HEADERS = {"Authorization": "Bearer dev-bypass:dGVzdEBleGFtcGxlLmNvbQ"}
 
@@ -17,6 +19,35 @@ class FakeLLMClient:
     def generate_reply(self, messages: list[dict[str, str]], *, model: str | None = None) -> str:
         self.calls.append(messages)
         return self.reply
+
+
+class FakeBackboardClient:
+    enabled = True
+
+    def ensure_assistant(self) -> str:
+        return "assistant-1"
+
+    def create_thread(self, assistant_id: str) -> str:
+        assert assistant_id
+        return "thread-1"
+
+    def upload_document_to_thread(
+        self, *, thread_id: str, filename: str, content: bytes, mime_type: str
+    ) -> BackboardDocumentResult:
+        assert thread_id
+        assert filename
+        assert content
+        assert mime_type
+        return BackboardDocumentResult(id="doc-1", status="processed")
+
+    def query_thread(self, *, thread_id: str, prompt: str) -> str:
+        assert thread_id
+        assert prompt
+        return "Candidate has 5+ years of software engineering experience."
+
+
+class DisabledBackboardClient:
+    enabled = False
 
 
 def _create_workspace(client: TestClient, title: str = "Untitled workspace") -> str:
@@ -472,3 +503,132 @@ def test_delete_workspace_cascades_graph_data() -> None:
 
     graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
     assert graph_resp.status_code == 404
+
+
+def test_context_node_upload_requires_backboard() -> None:
+    app = create_app()
+    app.state.store = MemoryStore()
+    app.state.supabase_admin = None
+    app.state.settings = replace(
+        app.state.settings,
+        auth_dev_bypass=True,
+        backboard_api_key=None,
+    )
+    app.state.backboard_client = DisabledBackboardClient()
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client, "Context Workspace")
+
+    create_node_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes",
+        json={"title": "Source docs", "position": {"x": 15, "y": 25}},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert create_node_resp.status_code == 200
+    context_node_id = create_node_resp.json()["id"]
+
+    upload_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/assets",
+        files={"file": ("notes.txt", b"hello context", "text/plain")},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert upload_resp.status_code == 503
+
+
+def test_context_node_allows_single_source_and_supports_pasted_text() -> None:
+    app = create_app()
+    app.state.store = MemoryStore()
+    app.state.supabase_admin = None
+    app.state.settings = replace(
+        app.state.settings,
+        auth_dev_bypass=True,
+        backboard_api_key="test-key",
+    )
+    app.state.backboard_client = FakeBackboardClient()
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client, "Context Workspace")
+    create_node_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes",
+        json={"title": "Resume", "position": {"x": 15, "y": 25}},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert create_node_resp.status_code == 200
+    context_node_id = create_node_resp.json()["id"]
+
+    text_upload = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/text",
+        json={"text": "Ayaan has 5 years of backend experience."},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert text_upload.status_code == 200
+    assert text_upload.json()["status"] == "processed"
+
+    second_upload = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/assets",
+        files={"file": ("extra.txt", b"another source", "text/plain")},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert second_upload.status_code == 409
+
+
+def test_generate_reply_uses_context_node_external_rag_context() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings,
+        openrouter_api_key="test-key",
+        auth_dev_bypass=True,
+        backboard_api_key="test-key",
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    app.state.llm_client = FakeLLMClient("reply")
+    app.state.backboard_client = FakeBackboardClient()
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    create_node_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes",
+        json={"title": "Resume", "position": {"x": 10, "y": 20}},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert create_node_resp.status_code == 200
+    context_node_id = create_node_resp.json()["id"]
+
+    text_upload = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/text",
+        json={"text": "Candidate has 5+ years of software engineering experience."},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert text_upload.status_code == 200
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [],
+            "contextNodeEdges": [
+                {
+                    "fromContextNodeId": context_node_id,
+                    "toChatId": target_chat_id,
+                    "rank": 0,
+                }
+            ],
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    generate_resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "How many years of experience?"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert generate_resp.status_code == 200
+
+    sent = app.state.llm_client.calls[-1]
+    assert any(
+        m["role"] == "system" and "5+ years" in m["content"]
+        for m in sent
+    )
