@@ -1,10 +1,17 @@
 import { useCallback, useMemo } from 'react'
-import { Background, ReactFlow, ReactFlowProvider, type Node, type NodeTypes } from '@xyflow/react'
+import {
+  Background,
+  BackgroundVariant,
+  ReactFlow,
+  ReactFlowProvider,
+  type Node,
+  type NodeTypes,
+} from '@xyflow/react'
 
-import { useMessaging } from '../messaging/useMessaging'
 import { ChatNode } from '../../nodes/chat/ChatNode'
 import { MessageNode } from '../../nodes/message/MessageNode'
 import { Composer } from '../../ui/Composer'
+import { useMessaging } from '../messaging/useMessaging'
 
 const nodeTypes: NodeTypes = {
   chat: ChatNode,
@@ -34,9 +41,10 @@ function CanvasInner() {
   }, [messaging.nodes])
 
   return (
-    <div className="canvas-page">
-      <div className="canvas-surface">
+    <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-[color:var(--color-text-primary)]">
+      <div className="h-full w-full">
         <ReactFlow
+          className="h-full w-full"
           deleteKeyCode={['Backspace', 'Delete']}
           fitView
           maxZoom={1.2}
@@ -47,19 +55,23 @@ function CanvasInner() {
           panOnDrag
           proOptions={{ hideAttribution: true }}
         >
-          <Background color="var(--color-grid)" gap={24} />
+          <Background color="var(--color-grid)" gap={18} size={1.2} variant={BackgroundVariant.Dots} />
         </ReactFlow>
       </div>
 
-      <Composer
-        disabled={messaging.isSubmitting}
-        onChange={messaging.setComposerText}
-        onSubmit={() => {
-          void messaging.createChatFromComposer()
-        }}
-        placeholder="Create chat with first message"
-        value={messaging.composerText}
-      />
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
+        <div className="pointer-events-auto">
+          <Composer
+            disabled={messaging.isSubmitting}
+            onChange={messaging.setComposerText}
+            onSubmit={() => {
+              void messaging.createChatFromComposer()
+            }}
+            placeholder="Create chat with first message"
+            value={messaging.composerText}
+          />
+        </div>
+      </div>
     </div>
   )
 }

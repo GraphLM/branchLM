@@ -1,7 +1,11 @@
 import { Canvas } from './flow/canvas/Canvas'
 
 function App() {
-  return <Canvas />
+  return (
+    <main className="h-full min-h-dvh w-full">
+      <Canvas />
+    </main>
+  )
 }
 
 export default App

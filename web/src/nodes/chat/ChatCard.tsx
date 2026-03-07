@@ -28,10 +28,10 @@ export function ChatCard({
   }
 
   return (
-    <div className="chat-card">
-      <div className="chat-card-header">
+    <div className="flex h-full w-full flex-col justify-between gap-3 rounded-2xl border border-[color:var(--color-chat-border)] bg-[linear-gradient(160deg,var(--color-panel)_0%,#121f34_100%)] p-3 shadow-[0_10px_28px_var(--color-chat-shadow)]">
+      <div className="flex items-center gap-2">
         <input
-          className="chat-title-input nodrag"
+          className="nodrag w-full rounded-lg border border-[color:var(--color-input-border)] bg-[color:var(--color-input-bg)] px-3 py-2 text-sm font-medium text-[color:var(--color-text-primary)] outline-none placeholder:text-[color:var(--color-text-secondary)] focus:border-[color:var(--color-control-bg)]"
           onChange={(event) => onUpdateTitle(chatId, event.target.value)}
           placeholder="Chat title"
           value={title}
@@ -39,9 +39,9 @@ export function ChatCard({
         <NodeDeleteButton label="Delete" onClick={() => onDeleteChat(chatId)} />
       </div>
 
-      <form className="chat-draft-row" onSubmit={handleSubmit}>
+      <form className="flex gap-2" onSubmit={handleSubmit}>
         <input
-          className="chat-draft-input nodrag"
+          className="nodrag w-full rounded-lg border border-[color:var(--color-input-border)] bg-[color:var(--color-input-bg)] px-3 py-2 text-sm text-[color:var(--color-text-primary)] outline-none placeholder:text-[color:var(--color-text-secondary)] focus:border-[color:var(--color-control-bg)]"
           onChange={(event) => onUpdateDraft(chatId, event.target.value)}
           placeholder="Message draft"
           value={draft}
