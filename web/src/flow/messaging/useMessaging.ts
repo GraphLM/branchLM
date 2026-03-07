@@ -33,10 +33,6 @@ function findChatById(chats: ChatRecord[], chatId: string): ChatRecord | undefin
   return chats.find((chat) => chat.id === chatId)
 }
 
-function buildTitleFromInput(input: string): string {
-  return input.length > 30 ? `${input.slice(0, 30).trimEnd()}...` : input
-}
-
 export function useMessaging(): UseMessagingReturn {
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [messages, setMessages] = useState<MessageRecord[]>([])
@@ -124,8 +120,10 @@ export function useMessaging(): UseMessagingReturn {
 
     setIsSubmitting(true)
 
+    const nextChatTitle = `Chat ${chats.length + 1}`
+
     const newChat = await messagingApi.createChat({
-      title: buildTitleFromInput(input),
+      title: nextChatTitle,
       draft: '',
     })
 
@@ -148,7 +146,7 @@ export function useMessaging(): UseMessagingReturn {
     setMessages((prev) => [...prev, userMessage, appMessage])
     setComposerText('')
     setIsSubmitting(false)
-  }, [composerText])
+  }, [composerText, chats.length])
 
   const nodes = useMemo<FlowNode[]>(() => {
     return chats.flatMap((chat, index) => {

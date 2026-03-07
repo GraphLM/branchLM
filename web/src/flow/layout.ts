@@ -58,6 +58,7 @@ export function createChatNode(params: {
     style: {
       width: CHAT_WIDTH,
       height: computeChatHeight(messageCount),
+      overflow: 'visible',
     },
   }
 }
