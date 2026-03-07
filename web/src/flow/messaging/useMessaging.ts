@@ -274,10 +274,30 @@ export function useMessaging(): UseMessagingReturn {
         return prevChats
       }
 
-      return prevChats.map((chat) => ({
-        ...chat,
-        position: positionByChatId.get(chat.id) ?? chat.position,
-      }))
+      let didChange = false
+      const nextChats = prevChats.map((chat) => {
+        const nextPosition = positionByChatId.get(chat.id)
+        if (!nextPosition) {
+          return chat
+        }
+
+        const currentPosition = chat.position
+        if (
+          currentPosition &&
+          currentPosition.x === nextPosition.x &&
+          currentPosition.y === nextPosition.y
+        ) {
+          return chat
+        }
+
+        didChange = true
+        return {
+          ...chat,
+          position: nextPosition,
+        }
+      })
+
+      return didChange ? nextChats : prevChats
     })
   }, [])
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -48,8 +48,8 @@ function CanvasInner() {
     setComposerText,
     createChatFromComposer,
     createBranchChatFromMessage,
-    updateChatPosition,
     onNodesChange,
+    updateChatPosition,
     deleteNodeById,
   } = useMessaging()
   const { screenToFlowPosition } = useReactFlow()
@@ -69,16 +69,6 @@ function CanvasInner() {
     },
     [deleteNodeById],
   )
-
-  const sortedNodes = useMemo(() => {
-    return [...nodes].sort((a, b) => {
-      if (a.type === b.type) {
-        return a.id.localeCompare(b.id)
-      }
-
-      return a.type === 'chat' ? -1 : 1
-    })
-  }, [nodes])
 
   const handleConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -142,9 +132,12 @@ function CanvasInner() {
 
   useEffect(() => {
     const availableNodeIds = new Set(nodes.map((node) => node.id))
-    setEdges((prev) =>
-      prev.filter((edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target)),
-    )
+    setEdges((prev) => {
+      const filtered = prev.filter(
+        (edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target),
+      )
+      return filtered.length === prev.length ? prev : filtered
+    })
   }, [nodes])
 
   const handleNodeDragStop: OnNodeDrag = useCallback(
@@ -183,7 +176,7 @@ function CanvasInner() {
 
             setEdges((prev) => prev.filter((edge) => !removeIds.has(edge.id)))
           }}
-          nodes={sortedNodes}
+          nodes={nodes}
           onNodesChange={onNodesChange}
           onNodesDelete={handleNodesDelete}
           onNodeDragStop={handleNodeDragStop}
