@@ -1,97 +1,121 @@
-import { useEffect, useState } from 'react'
-import type { FormEvent, ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import NodeDeleteButton from "../../ui/NodeDeleteButton";
+import SendButton from "../../ui/SendButton";
 
-import { NodeDeleteButton } from '../../ui/NodeDeleteButton'
-import { SendButton } from '../../ui/SendButton'
-import { composeButtonClass } from '../../ui/buttonStyles'
+type Props = {
+  title: string;
+  draft: string;
+  selected: boolean;
+  glow?: boolean;
+  targetHandle?: ReactNode;
+  onDelete(): void;
+  onDraftChange(nextDraft: string): void;
+  onSend(): void;
+  onTitleCommit(nextTitle: string): void;
+};
 
-type ChatCardProps = {
-  chatId: string
-  title: string
-  draft: string
-  onUpdateTitle: (chatId: string, title: string) => void
-  onUpdateDraft: (chatId: string, draft: string) => void
-  onSendMessage: (chatId: string) => void
-  onDeleteChat: (chatId: string) => void
-  targetHandle?: ReactNode
-}
+export default function ChatCard(props: Props) {
+  const {
+    title,
+    draft,
+    selected,
+    glow = false,
+    targetHandle,
+    onDelete,
+    onDraftChange,
+    onSend,
+    onTitleCommit,
+  } = props;
 
-export function ChatCard({
-  chatId,
-  title,
-  draft,
-  onUpdateTitle,
-  onUpdateDraft,
-  onSendMessage,
-  onDeleteChat,
-  targetHandle,
-}: ChatCardProps) {
-  const [isEditingTitle, setIsEditingTitle] = useState(false)
-  const [editableTitle, setEditableTitle] = useState(title)
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(title);
+  const titleInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
-    setEditableTitle(title)
-  }, [title])
+    if (!isEditingTitle) setTitleDraft(title);
+  }, [title, isEditingTitle]);
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    onSendMessage(chatId)
-  }
+  useEffect(() => {
+    if (!isEditingTitle) return;
+    const t = window.setTimeout(() => {
+      titleInputRef.current?.focus();
+      titleInputRef.current?.select();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [isEditingTitle]);
 
   const commitTitle = () => {
-    onUpdateTitle(chatId, editableTitle.trim())
-    setIsEditingTitle(false)
-  }
+    const next = titleDraft.trim();
+    if (next.length === 0) {
+      setTitleDraft(title);
+      setIsEditingTitle(false);
+      return;
+    }
+    onTitleCommit(next);
+    setIsEditingTitle(false);
+  };
+
+  const cancelTitle = () => {
+    setTitleDraft(title);
+    setIsEditingTitle(false);
+  };
 
   return (
-    <div className="relative h-full w-full">
-      {targetHandle}
-      <div className="absolute -top-4 left-3 right-3 z-20 flex items-center justify-between">
+    <div className="group relative flex h-full flex-col chat-drag-handle">
+      <div className="flex justify-between items-center w-full px-2 py-1 cursor-grab">
         {isEditingTitle ? (
           <input
-            autoFocus
-            className="nodrag w-28 rounded-full border border-[color:var(--color-input-border)] bg-[color:var(--color-canvas-base)]/95 px-3 py-1 text-xs font-semibold tracking-wide text-[color:var(--color-text-primary)] outline-none focus:border-[color:var(--color-control-bg)]"
-            onBlur={commitTitle}
-            onChange={(event) => setEditableTitle(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter') {
-                event.preventDefault()
-                commitTitle()
-              }
-              if (event.key === 'Escape') {
-                setEditableTitle(title)
-                setIsEditingTitle(false)
-              }
+            ref={titleInputRef}
+            className="truncate rounded-md border border-transparent px-1 text-sm font-semibold cursor-text focus:outline-none focus:ring-1 focus:ring-(--focus-ring) focus:border-(--control-border)"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={() => commitTitle()}
+            onMouseDown={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitTitle();
+              if (e.key === "Escape") cancelTitle();
             }}
-            value={editableTitle}
           />
         ) : (
           <button
-            className={composeButtonClass({
-              variant: 'primary',
-              size: 'chip',
-            })}
-            onClick={() => setIsEditingTitle(true)}
             type="button"
+            className="text-left text-sm font-semibold text-(--panel-fg) truncate hover:cursor-text"
+            onClick={() => setIsEditingTitle(true)}
+            title="Rename chat"
           >
             {title}
           </button>
         )}
-        <NodeDeleteButton label="Delete" onClick={() => onDeleteChat(chatId)} />
+
+        <NodeDeleteButton title="Delete chat" onClick={onDelete} />
       </div>
 
-      <form
-        className="flex h-full w-full items-end gap-2 rounded-2xl border border-[color:var(--color-chat-border)] bg-[linear-gradient(160deg,var(--color-panel)_0%,#121f34_100%)] p-3 pt-8 shadow-[0_10px_28px_var(--color-chat-shadow)]"
-        onSubmit={handleSubmit}
+      <div
+        className={[
+          "group relative h-full w-full overflow-visible rounded-md border bg-(--chat-bg) text-(--msg-fg) elev-2 backdrop-blur",
+          selected
+            ? "border-(--selection-border) ring-2 ring-(--selection-ring)"
+            : glow
+              ? "border-(--control-border-hover) ring-1 ring-(--surface-hover-ring)"
+              : "border-(--chat-border)",
+        ].join(" ")}
       >
-        <input
-          className="nodrag w-full rounded-lg border border-[color:var(--color-input-border)] bg-[color:var(--color-input-bg)] px-3 py-2 text-sm text-[color:var(--color-text-primary)] outline-none placeholder:text-[color:var(--color-text-secondary)] focus:border-[color:var(--color-control-bg)]"
-          onChange={(event) => onUpdateDraft(chatId, event.target.value)}
-          placeholder="Message draft"
-          value={draft}
-        />
-        <SendButton disabled={!draft.trim()} label="Send" type="submit" />
-      </form>
+        {targetHandle}
+
+        <div className="absolute left-0 right-0 bottom-0 px-2 py-2">
+          <div className="flex gap-2">
+            <input
+              className="nodrag flex-1 rounded-md border border-(--control-border) bg-(--control-bg) px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+              value={draft}
+              onChange={(e) => onDraftChange(e.target.value)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
+              placeholder="Send a message…"
+            />
+            <SendButton onClick={onSend} />
+          </div>
+        </div>
+      </div>
     </div>
-  )
+  );
 }

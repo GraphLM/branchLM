@@ -1,107 +1,109 @@
-import type { XYPosition } from '@xyflow/react'
+import type { AppNode, ChatNode, MessageNode } from "./types";
 
-import type { ChatFlowNode, ChatNodeData, MessageFlowNode, MessageNodeData, MessageRole } from './types'
+export const CHAT_WIDTH = 440;
+export const CHAT_MIN_HEIGHT = 360;
+export const CHAT_HEADER_HEIGHT = 46;
+export const CHAT_INPUT_HEIGHT = 66;
+export const CHAT_PADDING = 14;
+export const CHAT_FOOTER_PADDING = 14;
 
-const CHAT_WIDTH = 360
-const CHAT_MIN_HEIGHT = 180
-const CHAT_HEADER_HEIGHT = 72
-const CHAT_COMPOSER_HEIGHT = 72
-const CHAT_PADDING = 16
-const MESSAGE_HEIGHT = 48
-const MESSAGE_GAP = 10
-const CHAT_GAP = 40
-const CHAT_TOP = 24
-const CHAT_LEFT = 24
+export const MESSAGE_WIDTH = 300;
+export const MESSAGE_HEIGHT = 62;
+export const MESSAGE_GAP_Y = -15;
 
-export function computeMessagePosition(ordinal: number): XYPosition {
-  return {
-    x: CHAT_PADDING,
-    y: CHAT_HEADER_HEIGHT + CHAT_PADDING + ordinal * (MESSAGE_HEIGHT + MESSAGE_GAP),
-  }
+export function getMessagePosition(params: {
+  indexInChat: number;
+  role: "user" | "app";
+}): { x: number; y: number } {
+  const baseY = CHAT_HEADER_HEIGHT + CHAT_PADDING;
+  const y = baseY + params.indexInChat * (MESSAGE_HEIGHT + MESSAGE_GAP_Y);
+
+  const xLeft = CHAT_PADDING;
+  const xRight = CHAT_WIDTH - CHAT_PADDING - MESSAGE_WIDTH;
+  const x = params.role === "user" ? xRight : xLeft;
+
+  return { x, y };
 }
 
 export function computeChatHeight(messageCount: number): number {
-  const clampedCount = Math.max(messageCount, 0)
-  const messagesHeight =
-    clampedCount === 0 ? 0 : clampedCount * MESSAGE_HEIGHT + (clampedCount - 1) * MESSAGE_GAP
+  if (messageCount <= 0) return CHAT_MIN_HEIGHT;
 
-  return Math.max(
-    CHAT_MIN_HEIGHT,
-    CHAT_HEADER_HEIGHT + CHAT_COMPOSER_HEIGHT + CHAT_PADDING * 3 + messagesHeight,
-  )
+  const baseY = CHAT_HEADER_HEIGHT + CHAT_PADDING;
+  const lastMessageBottom =
+    baseY +
+    (messageCount - 1) * (MESSAGE_HEIGHT + MESSAGE_GAP_Y) +
+    MESSAGE_HEIGHT;
+
+  const needed = lastMessageBottom + CHAT_FOOTER_PADDING + CHAT_INPUT_HEIGHT;
+  return Math.max(CHAT_MIN_HEIGHT, needed);
+}
+
+const CHAT_GRID_COL_GAP = 24;
+const CHAT_GRID_ROW_GAP = 24;
+const CHAT_GRID_ROW_HEIGHT = 420;
+
+export function layoutChatNodesInGrid(nodes: AppNode[]): AppNode[] {
+  const chatNodes = nodes
+    .filter((n): n is ChatNode => n.type === "chat")
+    .sort((a, b) => a.id.localeCompare(b.id));
+
+  if (chatNodes.length === 0) return nodes;
+
+  const cols = 2;
+  const positionByChatId = new Map<string, { x: number; y: number }>();
+  chatNodes.forEach((chat, index) => {
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    positionByChatId.set(chat.id, {
+      x: col * (CHAT_WIDTH + CHAT_GRID_COL_GAP),
+      y: row * (CHAT_GRID_ROW_HEIGHT + CHAT_GRID_ROW_GAP),
+    });
+  });
+
+  return nodes.map((n) => {
+    if (n.type !== "chat") return n;
+    const pos = positionByChatId.get(n.id);
+    if (!pos) return n;
+    return { ...n, position: pos };
+  });
 }
 
 export function createChatNode(params: {
-  chatId: string
-  data: ChatNodeData
-  messageCount: number
-  position: XYPosition
-  ui: Pick<
-    ChatFlowNode['data'],
-    'onUpdateTitle' | 'onUpdateDraft' | 'onSendMessage' | 'onDeleteChat'
-  >
-}): ChatFlowNode {
-  const { chatId, data, messageCount, position, ui } = params
-
+  id: string;
+  position: { x: number; y: number };
+  title: string;
+}): ChatNode {
   return {
-    id: chatId,
-    type: 'chat',
-    position,
-    draggable: true,
-    selectable: true,
-    data: {
-      chatId,
-      title: data.title,
-      draft: data.draft,
-      ...ui,
-    },
-    style: {
-      width: CHAT_WIDTH,
-      height: computeChatHeight(messageCount),
-      overflow: 'visible',
-    },
-  }
+    id: params.id,
+    type: "chat",
+    position: params.position,
+    data: { title: params.title, draft: "" },
+    style: { width: CHAT_WIDTH, height: CHAT_MIN_HEIGHT },
+    dragHandle: ".chat-drag-handle",
+    zIndex: 0,
+  };
 }
 
 export function createMessageNode(params: {
-  messageId: string
-  chatId: string
-  data: MessageNodeData
-  ui: Pick<MessageFlowNode['data'], 'onDeleteMessage'>
-}): MessageFlowNode {
-  const { messageId, chatId, data, ui } = params
+  id: string;
+  chatId: string;
+  indexInChat: number;
+  role: "user" | "app";
+  text: string;
+}): MessageNode {
+  const position = getMessagePosition({
+    indexInChat: params.indexInChat,
+    role: params.role,
+  });
 
   return {
-    id: messageId,
-    type: 'message',
-    parentId: chatId,
+    id: params.id,
+    type: "message",
+    parentId: params.chatId,
+    extent: "parent",
+    position,
+    data: { text: params.text, role: params.role, ordinal: params.indexInChat },
     draggable: false,
-    extent: 'parent',
-    position: computeMessagePosition(data.ordinal),
-    data: {
-      messageId,
-      text: data.text,
-      role: data.role,
-      ordinal: data.ordinal,
-      ...ui,
-    },
-    style: {
-      width: CHAT_WIDTH - CHAT_PADDING * 2,
-      height: MESSAGE_HEIGHT,
-    },
-  }
-}
-
-export function computeChatPosition(chatOrdinal: number): XYPosition {
-  return {
-    x: CHAT_LEFT + chatOrdinal * (CHAT_WIDTH + CHAT_GAP),
-    y: CHAT_TOP,
-  }
-}
-
-export function createMockReply(input: string): { text: string; role: MessageRole } {
-  return {
-    role: 'app',
-    text: `Echo: ${input}`,
-  }
+    zIndex: 1,
+  };
 }

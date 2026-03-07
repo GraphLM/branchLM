@@ -1,25 +1,138 @@
 @import "tailwindcss";
 
 :root {
-  --color-canvas-base: #0e0f13;
-  --color-canvas-accent: #1a1330;
-  --color-grid: #2a2440;
-  --color-panel: #171821;
-  --color-panel-border: #2f3142;
-  --color-chat-border: #3a3d52;
-  --color-chat-shadow: rgba(3, 4, 8, 0.52);
-  --color-message-user: #2a1d46;
-  --color-message-app: #20222f;
-  --color-message-user-border: #7c5cff;
-  --color-message-app-border: #474b61;
-  --color-input-bg: #141620;
-  --color-input-border: #3b3f54;
-  --color-control-bg: #8b5cf6;
-  --color-control-bg-hover: #7c3aed;
-  --color-control-text: #f5f3ff;
-  --color-danger-bg: #341922;
-  --color-danger-border: #8b3a58;
-  --color-danger-text: #fecdd3;
-  --color-text-primary: #ececf1;
-  --color-text-secondary: #a6a8b5;
+  /* App canvas */
+  --canvas-bg: rgb(14, 15, 19);
+
+  /* React Flow */
+  --flow-edge-stroke: rgba(124, 92, 255, 0.35);
+  --flow-grid-dots: rgba(42, 36, 64, 0.42);
+  --edge-selected-glow: rgba(139, 92, 246, 0.34);
+
+  /* Controls (inputs/buttons) */
+  --control-bg: rgba(20, 22, 32, 0.92);
+  --control-bg-hover: rgba(23, 24, 33, 0.96);
+  --control-border: rgba(59, 63, 84, 0.55);
+  --control-border-hover: rgba(59, 63, 84, 0.78);
+  --control-fg: rgb(236, 236, 241);
+  --control-placeholder: rgba(166, 168, 181, 0.82);
+
+  /* Accent (purple) */
+  --accent: rgb(139, 92, 246);
+  --accent-strong: rgb(124, 58, 237);
+
+  --button-bg: rgba(139, 92, 246, 0.26);
+  --button-bg-hover: rgba(124, 58, 237, 0.36);
+  --button-border: rgba(124, 92, 255, 0.58);
+  --button-border-hover: rgba(124, 92, 255, 0.74);
+  --button-fg: rgb(245, 243, 255);
+
+  /* Selection */
+  --selection-border: rgba(124, 92, 255, 0.8);
+  --selection-ring: rgba(139, 92, 246, 0.24);
+  --focus-ring: rgba(139, 92, 246, 0.3);
+
+  /* Panel */
+  --panel-bg: rgba(23, 24, 33, 0.86);
+  --panel-border: rgba(47, 49, 66, 0.6);
+  --panel-fg: rgb(236, 236, 241);
+  --panel-muted: rgba(166, 168, 181, 0.84);
+  --surface-hover-ring: rgba(124, 92, 255, 0.38);
+
+  /* Chat node surface */
+  --chat-bg: rgba(23, 24, 33, 0.92);
+  --chat-border: rgba(58, 61, 82, 0.74);
+  --chat-divider: rgba(58, 61, 82, 0.58);
+
+  /* Handles */
+  --handle-bg: rgba(139, 92, 246, 0.94);
+  --handle-border: rgba(124, 92, 255, 0.98);
+  --handle-hover-shadow: 0 6px 18px rgba(3, 4, 8, 0.52);
+
+  /* Message nodes */
+  --msg-fg: rgb(236, 236, 241);
+  --msg-user-bg: rgba(42, 29, 70, 0.9);
+  --msg-user-border: rgba(124, 92, 255, 0.62);
+  --msg-app-bg: rgba(32, 34, 47, 0.9);
+  --msg-app-border: rgba(71, 75, 97, 0.62);
+
+  /* Depth tiers */
+  --shadow-1: 0 1px 2px rgba(3, 4, 8, 0.32);
+  --shadow-2: 0 6px 16px rgba(3, 4, 8, 0.4);
+  --shadow-3: 0 14px 30px rgba(3, 4, 8, 0.52);
+}
+
+html {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  background: var(--canvas-bg);
+  color: var(--panel-fg);
+}
+
+/* Edge hover feel */
+.react-flow__edge-path {
+  transition:
+    stroke-width 120ms ease-out,
+    stroke 120ms ease-out,
+    filter 120ms ease-out;
+}
+
+/* Node Handles: bigger hit-area + grow on hover */
+.rf-handle-connect {
+  width: 14px;
+  height: 14px;
+  transition:
+    width 140ms ease-out,
+    height 140ms ease-out,
+    box-shadow 140ms ease-out;
+}
+
+/* Invisible hit slop so it’s easy to hover/click */
+.rf-handle-connect::before {
+  content: "";
+  position: absolute;
+  top: -12px;
+  bottom: -12px;
+  left: -12px;
+  right: -12px;
+  border-radius: 9999px;
+  background: transparent;
+}
+
+/* Bias hit area outward so it doesn’t block node content */
+.rf-handle-connect.rf-handle-connect--source::before {
+  left: -6px;
+  right: -16px;
+}
+.rf-handle-connect.rf-handle-connect--target::before {
+  left: -16px;
+  right: -6px;
+}
+
+.rf-handle-connect:hover,
+.rf-handle-connect:focus-visible,
+.rf-handle-connect.rf-handle-connect--active {
+  width: 16px;
+  height: 16px;
+  box-shadow: var(--handle-hover-shadow);
+}
+
+.elev-1 {
+  box-shadow: var(--shadow-1);
+}
+
+.elev-2 {
+  box-shadow: var(--shadow-2);
+}
+
+.elev-3 {
+  box-shadow: var(--shadow-3);
 }

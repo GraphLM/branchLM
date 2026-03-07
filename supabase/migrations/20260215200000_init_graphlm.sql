@@ -1,4 +1,4 @@
--- Initial schema for graphLM (used by web/src/flow/FlowCanvas.tsx)
+-- Initial schema for branchLM (used by web/src/flow/FlowCanvas.tsx)
 
 -- Enable UUID generation
 create extension if not exists "pgcrypto";

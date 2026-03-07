@@ -88,7 +88,7 @@ class Settings:
                 or "https://openrouter.ai/api/v1"
             ),
             openrouter_site_url=_env("OPENROUTER_SITE_URL"),
-            openrouter_app_name=_env("OPENROUTER_APP_NAME", "graphLM") or "graphLM",
+            openrouter_app_name=_env("OPENROUTER_APP_NAME", "branchLM") or "branchLM",
             openrouter_timeout_seconds=_env_float("OPENROUTER_TIMEOUT_SECONDS", 20.0),
             max_prompt_chars=_env_int("MAX_PROMPT_CHARS", 4000),
             max_history_messages=_env_int("MAX_HISTORY_MESSAGES", 12),

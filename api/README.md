@@ -1,4 +1,4 @@
-## graphLM API (temporary)
+## branchLM API (temporary)
 
 This FastAPI service backs the graph canvas in `web/src/flow/FlowCanvas.tsx`.
 

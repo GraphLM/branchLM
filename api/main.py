@@ -15,7 +15,7 @@ def create_app() -> FastAPI:
     load_dotenv()
 
     settings = Settings.from_env()
-    app = FastAPI(title="graphLM API", version="0.0.0")
+    app = FastAPI(title="branchLM API", version="0.0.0")
     app.state.settings = settings
     app.state.llm_client = OpenRouterClient(settings)
     app.state.rate_limiter = SlidingWindowRateLimiter(settings)
