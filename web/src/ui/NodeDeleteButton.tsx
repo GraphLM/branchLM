@@ -9,7 +9,7 @@ export default function NodeDeleteButton({ onClick, title = "Delete" }: Props) {
   return (
     <button
       type="button"
-      className="relative rounded-md border border-transparent bg-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
+      className="relative rounded-lg border border-transparent bg-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
       title={title}
       aria-label={title}
       onMouseDown={(e) => {

@@ -237,6 +237,34 @@ def test_workspace_isolation_and_mismatch_rejected() -> None:
     assert mismatch_resp.status_code == 404
 
 
+def test_chat_patch_and_delete() -> None:
+    client = TestClient(create_app())
+
+    workspace_id = _create_workspace(client, "Workspace")
+    chat_id = _create_chat(client, workspace_id, "Old title")
+
+    patch_resp = client.patch(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}",
+        json={"title": "New title"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert patch_resp.status_code == 200
+
+    graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    assert graph_resp.status_code == 200
+    assert any(chat["id"] == chat_id and chat["title"] == "New title" for chat in graph_resp.json()["chats"])
+
+    delete_resp = client.delete(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}",
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert delete_resp.status_code == 200
+
+    graph_after_delete = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    assert graph_after_delete.status_code == 200
+    assert not any(chat["id"] == chat_id for chat in graph_after_delete.json()["chats"])
+
+
 def test_context_splicing_from_user_message_excludes_the_target_user_message() -> None:
     app = create_app()
     app.state.settings = replace(

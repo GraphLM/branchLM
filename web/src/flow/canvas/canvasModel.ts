@@ -11,19 +11,18 @@ import type {
 export type UseCanvasResult = {
   nodes: AppNode[];
   renderedEdges: Edge[];
-  composerDraft: string;
   selectedWorkspaceId: string | null;
   workspacesForPanel: Array<{ id: string; title: string }>;
   panelOpen: boolean;
   chatsForPanel: Array<{ id: string; title: string }>;
   isLocked: boolean;
+  toolbarPrimaryMode: "send" | "new-chat";
   actions: FlowActions;
   nodeTypes: {
     chat: (props: NodeProps<ChatFlowNode>) => ReactElement;
     context: (props: NodeProps<ContextFlowNode>) => ReactElement;
     message: (props: NodeProps<MessageFlowNode>) => ReactElement;
   };
-  setComposerDraft: (value: string) => void;
   onNodesChange: OnNodesChange<AppNode>;
   onEdgesChange: OnEdgesChange;
   onConnect: OnConnect;
@@ -44,5 +43,5 @@ export type UseCanvasResult = {
   onWorkspaceCreate: () => void;
   onWorkspaceRename: (workspaceId: string, title: string) => void;
   onWorkspaceDelete: (workspaceId: string) => void;
-  sendComposerMessage: () => void;
+  onToolbarPrimaryAction: () => void;
 };

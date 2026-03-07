@@ -9,9 +9,49 @@ export const CHAT_FOOTER_PADDING = 14;
 
 export const MESSAGE_WIDTH = 300;
 export const MESSAGE_HEIGHT = 62;
-export const MESSAGE_GAP_Y = -15;
+export const MESSAGE_GAP_Y = 8;
 export const CONTEXT_NODE_WIDTH = 300;
 export const CONTEXT_NODE_HEIGHT = 180;
+
+const MESSAGE_TEXT_LINE_HEIGHT = 20;
+const MESSAGE_TEXT_CHAR_WIDTH = 7.2;
+const INPUT_TEXT_LINE_HEIGHT = 20;
+const INPUT_TEXT_CHAR_WIDTH = 7.2;
+
+export function getMessageWidth(role: "user" | "app"): number {
+  return role === "user" ? MESSAGE_WIDTH : CHAT_WIDTH - CHAT_PADDING * 2;
+}
+
+export function estimateMessageHeight(params: {
+  text: string;
+  role: "user" | "app";
+}): number {
+  const width = getMessageWidth(params.role);
+  const horizontalPadding = params.role === "user" ? 16 : 0;
+  const verticalPadding = 8;
+  const minHeight = params.role === "user" ? 34 : 24;
+
+  const contentWidth = Math.max(120, width - horizontalPadding);
+  const charsPerLine = Math.max(8, Math.floor(contentWidth / MESSAGE_TEXT_CHAR_WIDTH));
+  const lines = params.text
+    .split("\n")
+    .reduce((sum, part) => sum + Math.max(1, Math.ceil(part.length / charsPerLine)), 0);
+
+  return Math.max(minHeight, lines * MESSAGE_TEXT_LINE_HEIGHT + verticalPadding);
+}
+
+export function estimateChatInputHeight(draft: string): number {
+  const minHeight = CHAT_INPUT_HEIGHT;
+  const maxHeight = 176;
+  const horizontalPadding = 72;
+  const contentWidth = Math.max(140, CHAT_WIDTH - CHAT_PADDING * 2 - horizontalPadding);
+  const charsPerLine = Math.max(10, Math.floor(contentWidth / INPUT_TEXT_CHAR_WIDTH));
+  const lines = draft
+    .split("\n")
+    .reduce((sum, part) => sum + Math.max(1, Math.ceil(part.length / charsPerLine)), 0);
+  const estimated = 24 + lines * INPUT_TEXT_LINE_HEIGHT;
+  return Math.min(maxHeight, Math.max(minHeight, estimated));
+}
 
 export function getMessagePosition(params: {
   indexInChat: number;
@@ -92,6 +132,7 @@ export function createMessageNode(params: {
   indexInChat: number;
   role: "user" | "app";
   text: string;
+  loading?: boolean;
 }): MessageNode {
   const position = getMessagePosition({
     indexInChat: params.indexInChat,
@@ -104,7 +145,12 @@ export function createMessageNode(params: {
     parentId: params.chatId,
     extent: "parent",
     position,
-    data: { text: params.text, role: params.role, ordinal: params.indexInChat },
+    data: {
+      text: params.text,
+      role: params.role,
+      ordinal: params.indexInChat,
+      loading: params.loading,
+    },
     draggable: false,
     zIndex: 1,
   };

@@ -1,7 +1,6 @@
 import { Background, BackgroundVariant, MarkerType, Panel as FlowPanel, ReactFlow } from "@xyflow/react";
 import { LogOut } from "lucide-react";
 import "@xyflow/react/dist/style.css";
-import Composer from "../../ui/Composer";
 import Panel from "../../ui/Panel";
 import { FlowActionsProvider } from "../actionsContext";
 import CanvasToolbar from "./CanvasToolbar";
@@ -19,10 +18,10 @@ export default function Canvas({ onLogout }: Props) {
       <FlowActionsProvider value={canvas.actions}>
         {canvas.chatsForPanel.length === 0 ? (
           <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center px-4">
-            <div className="max-w-sm rounded-md border border-(--panel-border) bg-(--panel-bg) elev-2 p-4 text-center backdrop-blur">
+            <div className="max-w-sm rounded-xl border border-(--panel-border) bg-(--panel-bg) elev-2 p-4 text-center backdrop-blur">
               <p className="text-sm text-(--panel-fg)">No chats yet</p>
               <p className="mt-1 text-xs text-(--panel-muted)">
-                Start by sending a message from the composer below.
+                Create your first chat from the toolbar at the bottom.
               </p>
             </div>
           </div>
@@ -77,11 +76,13 @@ export default function Canvas({ onLogout }: Props) {
             onAddContextNode={canvas.onAddContextNode}
             locked={canvas.isLocked}
             onLockToggle={canvas.onLockToggle}
+            primaryMode={canvas.toolbarPrimaryMode}
+            onPrimaryAction={canvas.onToolbarPrimaryAction}
           />
           <FlowPanel position="top-right" className="mt-4 mr-4">
             <button
               type="button"
-              className="group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+              className="group relative flex items-center justify-center rounded-lg border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
               aria-label="Log out"
               title="Log out"
               onMouseDown={(e) => e.stopPropagation()}
@@ -94,13 +95,6 @@ export default function Canvas({ onLogout }: Props) {
             </button>
           </FlowPanel>
         </ReactFlow>
-
-        <Composer
-          value={canvas.composerDraft}
-          onChange={canvas.setComposerDraft}
-          onSend={canvas.sendComposerMessage}
-          sendDisabled={!canvas.selectedWorkspaceId || canvas.composerDraft.trim().length === 0}
-        />
       </FlowActionsProvider>
     </div>
   );
