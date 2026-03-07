@@ -4,7 +4,7 @@ import type { AppNode } from "../types";
 import { makeChatNode, makeMessageNode } from "./messagingModel";
 import {
   createChat,
-  createMessage,
+  generateReply,
   updateChatTitle as updateChatTitleApi,
 } from "./messagingApi";
 
@@ -55,34 +55,22 @@ export function useMessaging(params: {
         ),
       );
 
-      const userCreated = await createMessage({
-        chatId,
-        role: "user",
-        text,
-      });
-      if (!userCreated) return;
-
-      const appText = `Mock response: Got it — "${text}"`;
-      const appCreated = await createMessage({
-        chatId,
-        role: "app",
-        text: appText,
-      });
-      if (!appCreated) return;
+      const generated = await generateReply({ chatId, text });
+      if (!generated) return;
 
       const userMessage = makeMessageNode({
-        id: userCreated.id,
+        id: generated.userMessage.id,
         chatId,
-        indexInChat: userCreated.ordinal,
+        indexInChat: generated.userMessage.ordinal,
         role: "user",
-        text,
+        text: generated.userMessage.text,
       });
       const appMessage = makeMessageNode({
-        id: appCreated.id,
+        id: generated.appMessage.id,
         chatId,
-        indexInChat: appCreated.ordinal,
+        indexInChat: generated.appMessage.ordinal,
         role: "app",
-        text: appText,
+        text: generated.appMessage.text,
       });
 
       params.setNodes((ns) => applyAutoLayout(ns.concat(userMessage, appMessage)));
@@ -111,34 +99,22 @@ export function useMessaging(params: {
       title: createdChat.title,
     });
 
-    const userCreated = await createMessage({
-      chatId: createdChat.id,
-      role: "user",
-      text,
-    });
-    if (!userCreated) return;
-
-    const appText = `Mock response: Got it — "${text}"`;
-    const appCreated = await createMessage({
-      chatId: createdChat.id,
-      role: "app",
-      text: appText,
-    });
-    if (!appCreated) return;
+    const generated = await generateReply({ chatId: createdChat.id, text });
+    if (!generated) return;
 
     const userMessage = makeMessageNode({
-      id: userCreated.id,
+      id: generated.userMessage.id,
       chatId: createdChat.id,
-      indexInChat: userCreated.ordinal,
+      indexInChat: generated.userMessage.ordinal,
       role: "user",
-      text,
+      text: generated.userMessage.text,
     });
     const appMessage = makeMessageNode({
-      id: appCreated.id,
+      id: generated.appMessage.id,
       chatId: createdChat.id,
-      indexInChat: appCreated.ordinal,
+      indexInChat: generated.appMessage.ordinal,
       role: "app",
-      text: appText,
+      text: generated.appMessage.text,
     });
 
     params.setNodes((ns) => applyAutoLayout(ns.concat(chat, userMessage, appMessage)));
