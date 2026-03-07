@@ -1,72 +1,75 @@
-# branchLM API
+## graphLM API (temporary)
 
-## Setup with uv
+This FastAPI service backs the graph canvas in `web/src/flow/FlowCanvas.tsx`.
+
+### Setup (using `uv`)
 
 ```bash
-cd /Users/ayaaniqbal/Desktop/code/GraphLM/branchLM/api
+cd api
 cp .env.example .env
+# Fill in SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY from your Supabase project settings
+# Fill in OPENROUTER_API_KEY to enable chat generation
 uv sync
 ```
 
-## Run the API
+### Supabase schema
+
+This repo now uses **Supabase migrations** under `supabase/migrations/`.
+
+- For a one-off manual setup, you can still run `api/supabase_schema.sql` in the Supabase SQL editor.
+- Recommended: use the Supabase CLI and run `supabase db push` (see repo root README / commands below).
+
+### Run dev server
 
 ```bash
+cd api
 uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-## Endpoints
+### Endpoints
 
-- `GET /health` (also `/api/health`)
-- `POST /api/chats` (create a chat node)
-- `PATCH /api/chats/{chat_id}` (rename chat)
-- `DELETE /api/chats/{chat_id}` (delete chat)
-- `POST /api/chats/{chat_id}/messages` (add message)
-- `POST /api/chats/{chat_id}/generate` (LLM reply; adds user + app messages)
-- `DELETE /api/messages/{message_id}` (delete message)
-- `GET /api/graph` (load chats, messages, context edges)
-- `PUT /api/graph/layout` (persist chat positions + context edges)
+- `GET /api/health` health check
+- `GET /api/graph` load graph
+- `PUT /api/graph/layout` persist layout + context edges
+- `POST /api/chats` create a chat
+- `PATCH /api/chats/{chatId}` rename chat
+- `DELETE /api/chats/{chatId}` delete chat (cascades)
+- `POST /api/chats/{chatId}/messages` add message
+- `POST /api/chats/{chatId}/generate` create a user message and an LLM reply
+- `DELETE /api/messages/{messageId}` delete message
 
-## Auth for protected routes
+All graph/chats/messages endpoints require:
 
-Send `Authorization: Bearer <token>`.
-
-- Normal mode: use a real Supabase access token from your signed-in user.
-- Dev mode: set `AUTH_DEV_BYPASS=true`, then use a token like:
-  `dev-bypass:dGVzdEBleGFtcGxlLmNvbQ` (base64url for `test@example.com`).
-
-## Quick test for node creation
-
-```bash
-curl -X POST http://127.0.0.1:8000/api/chats \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer dev-bypass:dGVzdEBleGFtcGxlLmNvbQ" \
-  -d '{"title":"Node A","position":{"x":120,"y":240}}'
+```http
+Authorization: Bearer <supabase_access_token>
 ```
 
-## LLM and rate limiting behavior
+Dev bypass option:
 
-- `/api/chats/{chat_id}/generate` requires `OPENROUTER_API_KEY`.
-- Empty prompts and oversized prompts are rejected with `400`.
-- Generate calls are rate-limited per `user_id + client_ip`.
-- When limited, API returns `429` with `Retry-After` header.
-- Provider/network failures are sanitized to safe `502/503` messages.
+- Set `AUTH_DEV_BYPASS=true` to accept synthetic dev tokens shaped like `dev-bypass:<base64url_email>`.
+- Intended only for local development.
 
-## Frontend run (`branchLM/web`)
+### LLM safeguards
 
-```bash
-cd /Users/ayaaniqbal/Desktop/code/GraphLM/branchLM/web
-npm install
-npm run dev
+- OpenRouter credentials are server-only and read from `.env`
+- Prompt size, history size, and completion size are capped with env-configurable limits
+- Chat generation is rate-limited per user and client IP
+- When provider calls fail, the API returns sanitized error messages without exposing provider details
+- `GET /api/graph` load graph
+- `PUT /api/graph/layout` persist layout + context edges
+- `POST /api/chats` create a chat
+- `PATCH /api/chats/{chatId}` rename chat
+- `DELETE /api/chats/{chatId}` delete chat (cascades)
+- `POST /api/chats/{chatId}/messages` add message
+- `DELETE /api/messages/{messageId}` delete message
+
+All graph/chats/messages endpoints require:
+
+```http
+Authorization: Bearer <supabase_access_token>
 ```
 
-- Open the URL printed by Vite (typically `http://localhost:5173`).
-- Ensure web is configured to send bearer tokens expected by this API.
+Dev bypass option:
 
-## What this stage includes
-
-- App factory (`create_app`) and centralized env settings loading
-- CORS middleware configured from env (`API_CORS_ORIGINS`)
-- Supabase runtime store + memory fallback
-- Token-based user resolution (Supabase auth + dev bypass)
-- Chat/message CRUD endpoints
-- LLM generate endpoint via OpenRouter with rate limiting
+- Set `AUTH_DEV_BYPASS=true` to accept synthetic dev tokens shaped like `dev-bypass:<base64url_email>`.
+- Intended only for local development.

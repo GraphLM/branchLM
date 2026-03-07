@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -14,14 +12,24 @@ from store.memory import MemoryStore
 
 
 def create_app() -> FastAPI:
-    env_path = Path(__file__).resolve().with_name(".env")
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv()
 
     settings = Settings.from_env()
     app = FastAPI(title="graphLM API", version="0.0.0")
     app.state.settings = settings
+    app.state.llm_client = OpenRouterClient(settings)
+    app.state.rate_limiter = SlidingWindowRateLimiter(settings)
 
-    # Store selection: Supabase when configured, otherwise in-memory fallback.
+    # TODO: tighten CORS for production
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=settings.cors_origins,
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Initialize persistence adapter once and attach to app.state.
     if settings.supabase_enabled:
         try:
             from supabase import create_client
@@ -41,22 +49,10 @@ def create_app() -> FastAPI:
         app.state.supabase_admin = None
         app.state.store = MemoryStore()
 
-    app.state.llm_client = OpenRouterClient(settings)
-    app.state.rate_limiter = SlidingWindowRateLimiter(settings)
-
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=settings.cors_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
     app.include_router(health.router)
     app.include_router(graph.router)
     app.include_router(chats.router)
     app.include_router(messages.router)
-
     return app
 
 

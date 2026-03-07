@@ -44,19 +44,25 @@ class OpenRouterClient:
         ).encode("utf-8")
 
         for attempt in range(3):
-            req = request.Request(url, data=payload, headers=headers, method="POST")  # noqa: S310
+            req = request.Request(  # noqa: S310
+                url,
+                data=payload,
+                headers=headers,
+                method="POST",
+            )
             try:
-                with request.urlopen(  # noqa: S310
+                with request.urlopen(  # noqa: S310  # nosec B310
                     req, timeout=self._settings.openrouter_timeout_seconds
                 ) as response:
                     data = json.loads(response.read().decode("utf-8"))
                 return self._extract_text(data)
             except error.HTTPError as exc:
-                should_retry = exc.code == 429 or 500 <= exc.code < 600
+                status_code = exc.code
+                should_retry = status_code == 429 or 500 <= status_code < 600
                 if should_retry and attempt < 2:
                     time.sleep(0.4 * (attempt + 1))
                     continue
-                raise LLMServiceError(self._message_for_status(exc.code)) from exc
+                raise LLMServiceError(self._message_for_status(status_code)) from exc
             except (error.URLError, TimeoutError) as exc:
                 if attempt < 2:
                     time.sleep(0.4 * (attempt + 1))

@@ -18,6 +18,14 @@ def _env_bool(name: str, default: bool = False) -> bool:
     return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
+def _cors_origins_from_env() -> list[str]:
+    raw = _env("API_CORS_ORIGINS")
+    if not raw:
+        # Vite default dev origins
+        return ["http://localhost:5173", "http://127.0.0.1:5173"]
+    return [o.strip() for o in raw.split(",") if o.strip()]
+
+
 def _env_int(name: str, default: int) -> int:
     raw = _env(name)
     if raw is None:
@@ -36,13 +44,6 @@ def _env_float(name: str, default: float) -> float:
         return float(raw)
     except ValueError:
         return default
-
-
-def _cors_origins_from_env() -> list[str]:
-    raw = _env("API_CORS_ORIGINS")
-    if not raw:
-        return ["http://localhost:5173", "http://127.0.0.1:5173"]
-    return [origin.strip() for origin in raw.split(",") if origin.strip()]
 
 
 @dataclass(frozen=True)
@@ -73,7 +74,7 @@ class Settings:
         return bool(self.openrouter_api_key)
 
     @classmethod
-    def from_env(cls) -> "Settings":
+    def from_env(cls) -> Settings:
         return cls(
             cors_origins=_cors_origins_from_env(),
             supabase_url=_env("SUPABASE_URL"),

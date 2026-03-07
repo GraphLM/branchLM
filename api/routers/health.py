@@ -10,7 +10,6 @@ from store.base import Store
 router = APIRouter()
 
 
-@router.get("/health")
 @router.get("/api/health")
 def health(store: Annotated[Store, Depends(get_store)]) -> dict[str, str]:
     return {"status": "ok", "mode": store.mode}

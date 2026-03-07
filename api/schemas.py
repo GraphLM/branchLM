@@ -29,11 +29,15 @@ class GenerateReplyBody(BaseModel):
 
 
 class ContextEdgeIn(BaseModel):
+    """Input model for context edge."""
+
     fromMessageId: str
     toChatId: str
     rank: int
 
 
 class GraphLayoutPutBody(BaseModel):
+    """Input model for graph layout put."""
+
     chatPositions: dict[str, Position]
     contextEdges: list[ContextEdgeIn]
