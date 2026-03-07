@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import chats, graph, health, messages, workspaces
 from services.llm_service import OpenRouterClient
+from services.metrics import AppMetrics
 from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
 from store.memory import MemoryStore
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     app.state.settings = settings
     app.state.llm_client = OpenRouterClient(settings)
     app.state.rate_limiter = SlidingWindowRateLimiter(settings)
+    app.state.metrics = AppMetrics()
 
     # TODO: tighten CORS for production
     app.add_middleware(

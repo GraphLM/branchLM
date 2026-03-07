@@ -23,7 +23,9 @@ class OpenRouterClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
 
-    def generate_reply(self, messages: Sequence[dict[str, str]]) -> str:
+    def generate_reply(
+        self, messages: Sequence[dict[str, str]], *, model: str | None = None
+    ) -> str:
         if not self._settings.llm_enabled:
             raise LLMConfigurationError("OpenRouter is not configured.")
 
@@ -39,7 +41,7 @@ class OpenRouterClient:
 
         payload = json.dumps(
             {
-                "model": self._settings.openrouter_model,
+                "model": model or self._settings.openrouter_model,
                 "messages": list(messages),
                 "max_tokens": self._settings.max_completion_tokens,
             }

@@ -19,6 +19,7 @@ class MemoryStore:
         self._chats: dict[str, dict[str, Any]] = {}
         self._messages: dict[str, dict[str, Any]] = {}
         self._edges: dict[str, dict[str, Any]] = {}
+        self._context_messages: dict[str, dict[str, Any]] = {}
 
     @property
     def mode(self) -> str:
@@ -36,6 +37,14 @@ class MemoryStore:
             and chat["workspace_id"] == workspace_id
             and self.workspace_exists(user_id, workspace_id)
         )
+
+    def get_chat(self, user_id: str, workspace_id: str, chat_id: str) -> dict[str, Any] | None:
+        chat = self._chats.get(chat_id)
+        if not chat:
+            return None
+        if chat["user_id"] != user_id or chat["workspace_id"] != workspace_id:
+            return None
+        return chat
 
     def list_workspaces(self, user_id: str) -> list[dict[str, Any]]:
         workspaces = [w for w in self._workspaces.values() if w["user_id"] == user_id]
@@ -87,8 +96,19 @@ class MemoryStore:
         for edge_id, edge in list(self._edges.items()):
             if edge["user_id"] != user_id:
                 continue
-            if edge["to_chat_id"] in removed_chat_ids or edge["from_message_id"] in removed_message_ids:
+            if (
+                edge["to_chat_id"] in removed_chat_ids
+                or edge["from_message_id"] in removed_message_ids
+            ):
                 del self._edges[edge_id]
+        for snapshot_id, snapshot in list(self._context_messages.items()):
+            if snapshot["user_id"] != user_id:
+                continue
+            if (
+                snapshot["to_chat_id"] in removed_chat_ids
+                or snapshot["message_id"] in removed_message_ids
+            ):
+                del self._context_messages[snapshot_id]
 
     def list_chats(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
         if not self.workspace_exists(user_id, workspace_id):
@@ -156,6 +176,19 @@ class MemoryStore:
         edges.sort(key=lambda r: r["rank"])
         return edges
 
+    def list_context_messages_for_chat(
+        self, user_id: str, workspace_id: str, chat_id: str
+    ) -> list[dict[str, Any]]:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            return []
+        rows = [
+            row
+            for row in self._context_messages.values()
+            if row["user_id"] == user_id and row["to_chat_id"] == chat_id
+        ]
+        rows.sort(key=lambda r: r["rank"])
+        return rows
+
     def create_chat(
         self,
         user_id: str,
@@ -163,6 +196,7 @@ class MemoryStore:
         title: str,
         position_x: float,
         position_y: float,
+        model: str | None = None,
     ) -> dict[str, Any]:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
@@ -176,14 +210,13 @@ class MemoryStore:
             "title": title,
             "position_x": position_x,
             "position_y": position_y,
+            "model": model,
             "created_at": now,
             "updated_at": now,
         }
-        return {"id": chat_id, "title": title, "workspace_id": workspace_id}
+        return {"id": chat_id, "title": title, "workspace_id": workspace_id, "model": model}
 
-    def update_chat_title(
-        self, user_id: str, workspace_id: str, chat_id: str, title: str
-    ) -> None:
+    def update_chat_title(self, user_id: str, workspace_id: str, chat_id: str, title: str) -> None:
         chat = self._chats.get(chat_id)
         if (
             not chat
@@ -221,6 +254,11 @@ class MemoryStore:
                 continue
             if edge["to_chat_id"] == chat_id or edge["from_message_id"] in removed_message_ids:
                 del self._edges[edge_id]
+        for snapshot_id, snapshot in list(self._context_messages.items()):
+            if snapshot["user_id"] != user_id:
+                continue
+            if snapshot["to_chat_id"] == chat_id or snapshot["message_id"] in removed_message_ids:
+                del self._context_messages[snapshot_id]
 
     def create_message(
         self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str
@@ -262,6 +300,9 @@ class MemoryStore:
         for edge_id, edge in list(self._edges.items()):
             if edge["user_id"] == user_id and edge["from_message_id"] == message_id:
                 del self._edges[edge_id]
+        for snapshot_id, snapshot in list(self._context_messages.items()):
+            if snapshot["user_id"] == user_id and snapshot["message_id"] == message_id:
+                del self._context_messages[snapshot_id]
 
     def update_chat_positions(
         self,
@@ -275,11 +316,7 @@ class MemoryStore:
         now = datetime.now(timezone.utc).isoformat()
         for chat_id, (x, y) in positions.items():
             chat = self._chats.get(chat_id)
-            if (
-                chat
-                and chat["user_id"] == user_id
-                and chat["workspace_id"] == workspace_id
-            ):
+            if chat and chat["user_id"] == user_id and chat["workspace_id"] == workspace_id:
                 chat["position_x"] = x
                 chat["position_y"] = y
                 chat["updated_at"] = now
@@ -304,17 +341,26 @@ class MemoryStore:
         for edge_id, edge in list(self._edges.items()):
             if edge["user_id"] != user_id:
                 continue
-            if edge["to_chat_id"] in workspace_chat_ids or edge["from_message_id"] in workspace_message_ids:
+            if (
+                edge["to_chat_id"] in workspace_chat_ids
+                or edge["from_message_id"] in workspace_message_ids
+            ):
                 del self._edges[edge_id]
+        for snapshot_id, snapshot in list(self._context_messages.items()):
+            if snapshot["user_id"] != user_id:
+                continue
+            if snapshot["to_chat_id"] in workspace_chat_ids:
+                del self._context_messages[snapshot_id]
 
         now = datetime.now(timezone.utc).isoformat()
+        edges_by_target: dict[str, list[dict[str, Any]]] = {}
         for edge in edges:
             if edge["to_chat_id"] not in workspace_chat_ids:
                 continue
             if edge["from_message_id"] not in workspace_message_ids:
                 continue
             edge_id = str(uuid4())
-            self._edges[edge_id] = {
+            edge_row = {
                 "id": edge_id,
                 "user_id": user_id,
                 "from_message_id": edge["from_message_id"],
@@ -322,3 +368,51 @@ class MemoryStore:
                 "rank": edge["rank"],
                 "created_at": now,
             }
+            self._edges[edge_id] = edge_row
+            edges_by_target.setdefault(edge_row["to_chat_id"], []).append(edge_row)
+
+        messages_by_chat: dict[str, list[dict[str, Any]]] = {}
+        for message in self._messages.values():
+            if message["user_id"] != user_id:
+                continue
+            if message["chat_id"] not in workspace_chat_ids:
+                continue
+            messages_by_chat.setdefault(message["chat_id"], []).append(message)
+        for chat_messages in messages_by_chat.values():
+            chat_messages.sort(key=lambda m: m["ordinal"])
+        messages_by_id = {
+            message["id"]: message
+            for message in self._messages.values()
+            if message["user_id"] == user_id and message["chat_id"] in workspace_chat_ids
+        }
+
+        for to_chat_id, target_edges in edges_by_target.items():
+            target_edges.sort(key=lambda edge: edge["rank"])
+            seen: set[str] = set()
+            rank = 0
+            for edge in target_edges:
+                source_message = messages_by_id.get(edge["from_message_id"])
+                if not source_message:
+                    continue
+                source_chat_messages = messages_by_chat.get(source_message["chat_id"], [])
+                include_until = source_message["ordinal"]
+                if source_message["role"] == "user":
+                    include_until -= 1
+                for message in source_chat_messages:
+                    if message["ordinal"] > include_until:
+                        break
+                    if message["id"] in seen:
+                        continue
+                    seen.add(message["id"])
+                    snapshot_id = str(uuid4())
+                    self._context_messages[snapshot_id] = {
+                        "id": snapshot_id,
+                        "user_id": user_id,
+                        "to_chat_id": to_chat_id,
+                        "message_id": message["id"],
+                        "role": message["role"],
+                        "text": message["text"],
+                        "rank": rank,
+                        "created_at": now,
+                    }
+                    rank += 1

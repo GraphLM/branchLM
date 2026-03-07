@@ -14,7 +14,7 @@ class FakeLLMClient:
         self.reply = reply
         self.calls: list[list[dict[str, str]]] = []
 
-    def generate_reply(self, messages: list[dict[str, str]]) -> str:
+    def generate_reply(self, messages: list[dict[str, str]], *, model: str | None = None) -> str:
         self.calls.append(messages)
         return self.reply
 
@@ -165,7 +165,9 @@ def test_generate_reply_rejects_empty_or_oversized_input() -> None:
 
 def test_generate_reply_surfaces_safe_provider_errors() -> None:
     class SafeFailLLMClient:
-        def generate_reply(self, messages: list[dict[str, str]]) -> str:
+        def generate_reply(
+            self, messages: list[dict[str, str]], *, model: str | None = None
+        ) -> str:
             raise Exception("internal details should not leak")
 
     app = create_app()
@@ -411,7 +413,9 @@ def test_generate_reply_retries_once_when_context_overflowed() -> None:
         def __init__(self) -> None:
             self.calls: list[list[dict[str, str]]] = []
 
-        def generate_reply(self, messages: list[dict[str, str]]) -> str:
+        def generate_reply(
+            self, messages: list[dict[str, str]], *, model: str | None = None
+        ) -> str:
             self.calls.append(messages)
             if len(self.calls) == 1:
                 raise LLMServiceError(

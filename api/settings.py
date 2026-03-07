@@ -46,6 +46,29 @@ def _env_float(name: str, default: float) -> float:
         return default
 
 
+def _env_model_windows(name: str) -> dict[str, int]:
+    raw = _env(name)
+    if not raw:
+        return {}
+
+    pairs: dict[str, int] = {}
+    for item in raw.split(","):
+        entry = item.strip()
+        if not entry or ":" not in entry:
+            continue
+        model, size_raw = entry.split(":", 1)
+        model_name = model.strip()
+        if not model_name:
+            continue
+        try:
+            size = int(size_raw.strip())
+        except ValueError:
+            continue
+        if size > 0:
+            pairs[model_name] = size
+    return pairs
+
+
 @dataclass(frozen=True)
 class Settings:
     cors_origins: list[str]
@@ -64,6 +87,7 @@ class Settings:
     input_token_safety_margin: int
     estimated_chars_per_token: int
     context_summary_max_chars: int
+    model_context_window_overrides: dict[str, int]
     rate_limit_per_minute: int
     rate_limit_burst: int
     rate_limit_burst_window_seconds: int
@@ -101,6 +125,7 @@ class Settings:
             input_token_safety_margin=_env_int("INPUT_TOKEN_SAFETY_MARGIN", 256),
             estimated_chars_per_token=_env_int("ESTIMATED_CHARS_PER_TOKEN", 4),
             context_summary_max_chars=_env_int("CONTEXT_SUMMARY_MAX_CHARS", 600),
+            model_context_window_overrides=_env_model_windows("MODEL_CONTEXT_WINDOW_OVERRIDES"),
             rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 20),
             rate_limit_burst=_env_int("RATE_LIMIT_BURST", 4),
             rate_limit_burst_window_seconds=_env_int("RATE_LIMIT_BURST_WINDOW_SECONDS", 10),

@@ -21,6 +21,7 @@ class PatchWorkspaceBody(BaseModel):
 class CreateChatBody(BaseModel):
     title: str
     position: Position
+    model: str | None = None
 
 
 class PatchChatBody(BaseModel):
@@ -34,6 +35,7 @@ class CreateMessageBody(BaseModel):
 
 class GenerateReplyBody(BaseModel):
     text: str
+    model: str | None = None
 
 
 class ContextEdgeIn(BaseModel):
