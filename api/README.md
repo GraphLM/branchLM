@@ -43,6 +43,14 @@ curl -X POST http://127.0.0.1:8000/api/chats \
   -d '{"title":"Node A","position":{"x":120,"y":240}}'
 ```
 
+## LLM and rate limiting behavior
+
+- `/api/chats/{chat_id}/generate` requires `OPENROUTER_API_KEY`.
+- Empty prompts and oversized prompts are rejected with `400`.
+- Generate calls are rate-limited per `user_id + client_ip`.
+- When limited, API returns `429` with `Retry-After` header.
+- Provider/network failures are sanitized to safe `502/503` messages.
+
 ## Frontend run (`branchLM/web`)
 
 ```bash
@@ -52,7 +60,7 @@ npm run dev
 ```
 
 - Open the URL printed by Vite (typically `http://localhost:5173`).
-- Current frontend uses local mock API in `web/src/flow/messaging/messagingApi.ts`, so UI actions do not yet call backend endpoints.
+- Ensure web is configured to send bearer tokens expected by this API.
 
 ## What this stage includes
 
@@ -61,4 +69,4 @@ npm run dev
 - Supabase runtime store + memory fallback
 - Token-based user resolution (Supabase auth + dev bypass)
 - Chat/message CRUD endpoints
-- LLM generate endpoint via OpenRouter
+- LLM generate endpoint via OpenRouter with rate limiting
