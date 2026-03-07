@@ -1,24 +1,48 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from routers import chats, graph, health, messages
+from services.llm_service import OpenRouterClient
+from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
+from store.memory import MemoryStore
 
 
 def create_app() -> FastAPI:
-    load_dotenv()
+    env_path = Path(__file__).resolve().with_name(".env")
+    load_dotenv(dotenv_path=env_path)
 
     settings = Settings.from_env()
-    app = FastAPI(title="branchLM API", version="0.1.0")
+    app = FastAPI(title="graphLM API", version="0.0.0")
     app.state.settings = settings
 
-    # Placeholders for upcoming commits that introduce concrete implementations.
-    app.state.store = None
-    app.state.llm_client = None
-    app.state.rate_limiter = None
-    app.state.supabase_admin = None
+    # Store selection: Supabase when configured, otherwise in-memory fallback.
+    if settings.supabase_enabled:
+        try:
+            from supabase import create_client
+
+            from store.supabase import SupabaseStore
+        except ModuleNotFoundError:
+            app.state.supabase_admin = None
+            app.state.store = MemoryStore()
+        else:
+            assert settings.supabase_url and settings.supabase_service_role_key
+            supabase_admin = create_client(
+                settings.supabase_url, settings.supabase_service_role_key
+            )
+            app.state.supabase_admin = supabase_admin
+            app.state.store = SupabaseStore.from_client(supabase_admin)
+    else:
+        app.state.supabase_admin = None
+        app.state.store = MemoryStore()
+
+    app.state.llm_client = OpenRouterClient(settings)
+    app.state.rate_limiter = SlidingWindowRateLimiter(settings)
 
     app.add_middleware(
         CORSMiddleware,
@@ -28,9 +52,10 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"status": "ok"}
+    app.include_router(health.router)
+    app.include_router(graph.router)
+    app.include_router(chats.router)
+    app.include_router(messages.router)
 
     return app
 

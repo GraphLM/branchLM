@@ -1,17 +1,22 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { type OnNodesChange, type XYPosition } from '@xyflow/react'
+import { type Edge, type OnNodesChange, type XYPosition } from '@xyflow/react'
 
-import {
-  computeChatPosition,
-  createChatNode,
-  createMessageNode,
-  createMockReply,
-} from '../layout'
+import { buildContextEdgeId } from '../connections/connectionsModel'
+import { computeChatPosition, createChatNode, createMessageNode } from '../layout'
 import type { ChatRecord, FlowNode, MessageRecord } from '../types'
-import { messagingApi } from './messagingApi'
+import {
+  createChat,
+  deleteChat as deleteChatApi,
+  deleteMessage as deleteMessageApi,
+  fetchGraph,
+  generateReply,
+  saveGraphLayout,
+  updateChatTitle,
+} from './messagingApi'
 
 type UseMessagingReturn = {
   nodes: FlowNode[]
+  initialEdges: Edge[]
   composerText: string
   isSubmitting: boolean
   setComposerText: (value: string) => void
@@ -21,6 +26,7 @@ type UseMessagingReturn = {
     position: XYPosition
   }) => Promise<string | null>
   updateChatPosition: (chatId: string, position: XYPosition) => void
+  syncContextEdges: (edges: Edge[]) => void
   onNodesChange: OnNodesChange<FlowNode>
   deleteNodeById: (nodeId: string) => Promise<void>
 }
@@ -43,24 +49,40 @@ function findChatById(chats: ChatRecord[], chatId: string): ChatRecord | undefin
 export function useMessaging(): UseMessagingReturn {
   const [chats, setChats] = useState<ChatRecord[]>([])
   const [messages, setMessages] = useState<MessageRecord[]>([])
+  const [contextEdges, setContextEdges] = useState<Edge[]>([])
   const [composerText, setComposerText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
 
   useEffect(() => {
     let cancelled = false
+    ;(async () => {
+      const graph = await fetchGraph()
+      if (!graph || cancelled) return
 
-    void (async () => {
-      const graph = await messagingApi.fetchGraph()
-      if (cancelled) {
-        return
-      }
-
-      if (graph.chats.length === 0 && graph.messages.length === 0) {
-        return
-      }
-
-      setChats(graph.chats)
-      setMessages(graph.messages)
+      setChats(
+        graph.chats.map((chat) => ({
+          id: chat.id,
+          title: chat.title,
+          draft: '',
+          position: chat.position,
+        })),
+      )
+      setMessages(
+        graph.messages.map((message) => ({
+          id: message.id,
+          chatId: message.chatId,
+          ordinal: message.ordinal,
+          role: message.role,
+          text: message.text,
+        })),
+      )
+      setContextEdges(
+        graph.contextEdges.map((edge) => ({
+          id: buildContextEdgeId(edge.fromMessageId, edge.toChatId),
+          source: edge.fromMessageId,
+          target: edge.toChatId,
+        })),
+      )
     })()
 
     return () => {
@@ -68,28 +90,53 @@ export function useMessaging(): UseMessagingReturn {
     }
   }, [])
 
-  const updateChatTitle = useCallback((chatId: string, title: string) => {
+  const persistLayout = useCallback(
+    (nextChats: ChatRecord[], nextEdges: Edge[]) => {
+      void saveGraphLayout({ chats: nextChats, edges: nextEdges })
+    },
+    [],
+  )
+
+  const updateChatTitleAndPersist = useCallback((chatId: string, title: string) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, title } : chat)))
-    void messagingApi.updateChat(chatId, { title })
+    void updateChatTitle({ chatId, title })
   }, [])
 
   const updateChatDraft = useCallback((chatId: string, draft: string) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, draft } : chat)))
-    void messagingApi.updateChat(chatId, { draft })
   }, [])
 
-  const updateChatPosition = useCallback((chatId: string, position: XYPosition) => {
-    setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat)))
-  }, [])
+  const updateChatPosition = useCallback(
+    (chatId: string, position: XYPosition) => {
+      setChats((prev) => {
+        const nextChats = prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat))
+        persistLayout(nextChats, contextEdges)
+        return nextChats
+      })
+    },
+    [contextEdges, persistLayout],
+  )
+
+  const syncContextEdges = useCallback(
+    (edges: Edge[]) => {
+      const nextEdges = edges
+        .filter((edge) => edge.id.startsWith('ctx:'))
+        .map((edge) => ({ id: edge.id, source: edge.source, target: edge.target }))
+      setContextEdges(nextEdges)
+      persistLayout(chats, nextEdges)
+    },
+    [chats, persistLayout],
+  )
 
   const deleteChat = useCallback(async (chatId: string) => {
-    await messagingApi.deleteChat(chatId)
+    await deleteChatApi({ chatId })
     setChats((prev) => prev.filter((chat) => chat.id !== chatId))
     setMessages((prev) => prev.filter((message) => message.chatId !== chatId))
+    setContextEdges((prev) => prev.filter((edge) => edge.target !== chatId))
   }, [])
 
   const deleteMessage = useCallback(async (messageId: string) => {
-    await messagingApi.deleteMessage(messageId)
+    await deleteMessageApi({ messageId })
 
     setMessages((prev) => {
       const target = prev.find((message) => message.id === messageId)
@@ -103,112 +150,126 @@ export function useMessaging(): UseMessagingReturn {
 
       return [...otherMessages, ...normalizedChatMessages]
     })
+    setContextEdges((prev) => prev.filter((edge) => edge.source !== messageId))
   }, [])
 
   const sendMessageInChat = useCallback(
     async (chatId: string) => {
       const chat = findChatById(chats, chatId)
-      if (!chat) {
-        return
-      }
+      if (!chat) return
 
       const input = chat.draft.trim()
-      if (!input) {
+      if (!input) return
+
+      setIsSubmitting(true)
+      setChats((prev) => prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)))
+
+      const generated = await generateReply({ chatId, text: input })
+      if (!generated.ok) {
+        setChats((prev) => prev.map((item) => (item.id === chatId ? { ...item, draft: input } : item)))
+        setIsSubmitting(false)
         return
       }
 
-      setIsSubmitting(true)
-      try {
-        const chatMessages = normalizeMessages(messages, chatId)
-        const userMessage = await messagingApi.createMessage({
-          chatId,
-          text: input,
-          role: 'user',
-          ordinal: chatMessages.length,
-        })
-        const reply = createMockReply(input)
-        const appMessage = await messagingApi.createMessage({
-          chatId,
-          text: reply.text,
-          role: reply.role,
-          ordinal: chatMessages.length + 1,
-        })
-
-        setMessages((prev) => {
-          const otherMessages = prev.filter((message) => message.chatId !== chatId)
-          return [...otherMessages, ...chatMessages, userMessage, appMessage]
-        })
-
-        setChats((prev) =>
-          prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)),
-        )
-      } finally {
-        setIsSubmitting(false)
-      }
+      setMessages((prev) => {
+        const next = prev
+          .filter((message) => message.chatId !== chatId)
+          .concat(normalizeMessages(prev, chatId))
+          .concat([
+            {
+              id: generated.userMessage.id,
+              chatId: generated.userMessage.chatId,
+              ordinal: generated.userMessage.ordinal,
+              role: 'user',
+              text: generated.userMessage.text,
+            },
+            {
+              id: generated.appMessage.id,
+              chatId: generated.appMessage.chatId,
+              ordinal: generated.appMessage.ordinal,
+              role: 'app',
+              text: generated.appMessage.text,
+            },
+          ])
+        return next
+      })
+      setIsSubmitting(false)
     },
-    [chats, messages],
+    [chats],
   )
 
   const createChatFromComposer = useCallback(async () => {
     const input = composerText.trim()
-    if (!input) {
+    if (!input) return
+
+    setIsSubmitting(true)
+    const nextChatTitle = `Chat ${chats.length + 1}`
+    const position = computeChatPosition(chats.length)
+    const createdChat = await createChat({ title: nextChatTitle, position })
+    if (!createdChat) {
+      setIsSubmitting(false)
       return
     }
 
-    setIsSubmitting(true)
-    try {
-      const nextChatTitle = `Chat ${chats.length + 1}`
+    const newChat: ChatRecord = { id: createdChat.id, title: createdChat.title, draft: '', position }
+    setChats((prev) => prev.concat(newChat))
+    persistLayout(chats.concat(newChat), contextEdges)
 
-      const newChat = await messagingApi.createChat({
-        title: nextChatTitle,
-        draft: '',
-      })
-
-      const userMessage = await messagingApi.createMessage({
-        chatId: newChat.id,
-        text: input,
-        role: 'user',
-        ordinal: 0,
-      })
-
-      const reply = createMockReply(input)
-      const appMessage = await messagingApi.createMessage({
-        chatId: newChat.id,
-        text: reply.text,
-        role: reply.role,
-        ordinal: 1,
-      })
-
-      setChats((prev) => [...prev, newChat])
-      setMessages((prev) => [...prev, userMessage, appMessage])
-      setComposerText('')
-    } finally {
+    const generated = await generateReply({ chatId: createdChat.id, text: input })
+    if (!generated.ok) {
       setIsSubmitting(false)
+      return
     }
-  }, [composerText, chats.length])
+
+    setMessages((prev) =>
+      prev.concat([
+        {
+          id: generated.userMessage.id,
+          chatId: generated.userMessage.chatId,
+          ordinal: generated.userMessage.ordinal,
+          role: 'user',
+          text: generated.userMessage.text,
+        },
+        {
+          id: generated.appMessage.id,
+          chatId: generated.appMessage.chatId,
+          ordinal: generated.appMessage.ordinal,
+          role: 'app',
+          text: generated.appMessage.text,
+        },
+      ]),
+    )
+    setComposerText('')
+    setIsSubmitting(false)
+  }, [chats, composerText, contextEdges, persistLayout])
 
   const createBranchChatFromMessage = useCallback(
     async (params: { sourceMessageId: string; position: XYPosition }) => {
       const sourceMessage = messages.find((message) => message.id === params.sourceMessageId)
-      if (!sourceMessage) {
+      if (!sourceMessage) return null
+
+      setIsSubmitting(true)
+      const createdChat = await createChat({
+        title: `Branch ${chats.length + 1}`,
+        position: params.position,
+      })
+      if (!createdChat) {
+        setIsSubmitting(false)
         return null
       }
 
-      setIsSubmitting(true)
-      try {
-        const newChat = await messagingApi.createChat({
-          title: `Branch ${chats.length + 1}`,
-          draft: '',
-          position: params.position,
-        })
-
-        setChats((prev) => [...prev, newChat])
-        return newChat.id
-      } finally {
-        setIsSubmitting(false)
+      const newChat: ChatRecord = {
+        id: createdChat.id,
+        title: createdChat.title,
+        draft: '',
+        position: params.position,
       }
+      setChats((prev) => prev.concat(newChat))
+      persistLayout(chats.concat(newChat), contextEdges)
+      setIsSubmitting(false)
+      return createdChat.id
     },
-    [messages, chats.length],
+    [chats, contextEdges, messages, persistLayout],
   )
 
   const nodes = useMemo<FlowNode[]>(() => {
@@ -217,14 +278,11 @@ export function useMessaging(): UseMessagingReturn {
 
       const chatNode = createChatNode({
         chatId: chat.id,
-        data: {
-          title: chat.title,
-          draft: chat.draft,
-        },
+        data: { title: chat.title, draft: chat.draft },
         messageCount: chatMessages.length,
         position: chat.position ?? computeChatPosition(index),
         ui: {
-          onUpdateTitle: updateChatTitle,
+          onUpdateTitle: updateChatTitleAndPersist,
           onUpdateDraft: updateChatDraft,
           onSendMessage: sendMessageInChat,
           onDeleteChat: (targetChatId) => {
@@ -252,7 +310,7 @@ export function useMessaging(): UseMessagingReturn {
 
       return [chatNode, ...messageNodes]
     })
-  }, [chats, messages, updateChatTitle, updateChatDraft, sendMessageInChat, deleteChat, deleteMessage])
+  }, [chats, messages, updateChatTitleAndPersist, updateChatDraft, sendMessageInChat, deleteChat, deleteMessage])
 
   const deleteNodeById = useCallback(
     async (nodeId: string) => {
@@ -276,61 +334,42 @@ export function useMessaging(): UseMessagingReturn {
       const positionByChatId = new Map<string, XYPosition>()
 
       for (const change of changes) {
-        if (change.type !== 'position') {
-          continue
-        }
-
-        if (!chatIds.has(change.id)) {
-          continue
-        }
-
+        if (change.type !== 'position') continue
+        if (!chatIds.has(change.id)) continue
         const nextPosition = change.position ?? change.positionAbsolute
-        if (!nextPosition) {
-          continue
-        }
-
+        if (!nextPosition) continue
         positionByChatId.set(change.id, nextPosition)
       }
 
-      if (positionByChatId.size === 0) {
-        return prevChats
-      }
+      if (positionByChatId.size === 0) return prevChats
 
       let didChange = false
       const nextChats = prevChats.map((chat) => {
         const nextPosition = positionByChatId.get(chat.id)
-        if (!nextPosition) {
-          return chat
-        }
-
+        if (!nextPosition) return chat
         const currentPosition = chat.position
-        if (
-          currentPosition &&
-          currentPosition.x === nextPosition.x &&
-          currentPosition.y === nextPosition.y
-        ) {
+        if (currentPosition && currentPosition.x === nextPosition.x && currentPosition.y === nextPosition.y) {
           return chat
         }
-
         didChange = true
-        return {
-          ...chat,
-          position: nextPosition,
-        }
+        return { ...chat, position: nextPosition }
       })
 
+      if (didChange) persistLayout(nextChats, contextEdges)
       return didChange ? nextChats : prevChats
     })
-  }, [])
+  }, [contextEdges, persistLayout])
 
   return {
     nodes,
+    initialEdges: contextEdges,
     composerText,
     isSubmitting,
     setComposerText,
     createChatFromComposer,
     createBranchChatFromMessage,
     updateChatPosition,
+    syncContextEdges,
     onNodesChange,
     deleteNodeById,
   }

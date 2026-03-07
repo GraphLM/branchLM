@@ -1,0 +1,104 @@
+from __future__ import annotations
+
+import base64
+from typing import Any
+
+from fastapi import Depends, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+try:
+    from supabase import Client
+except ModuleNotFoundError:
+    Client = Any  # type: ignore[assignment,misc]
+
+from settings import Settings
+from store.base import Store
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def get_settings(request: Request) -> Settings:
+    settings = getattr(request.app.state, "settings", None)
+    assert settings is not None, "Settings not initialized on app.state"
+    return settings
+
+
+def get_supabase_admin(request: Request) -> Client | None:
+    return getattr(request.app.state, "supabase_admin", None)
+
+
+def get_store(request: Request) -> Store:
+    store = getattr(request.app.state, "store", None)
+    assert store is not None, "Store not initialized on app.state"
+    return store
+
+
+def _extract_user_id(user: Any) -> str | None:
+    if isinstance(user, dict):
+        uid = user.get("id")
+        return str(uid) if uid else None
+    uid = getattr(user, "id", None)
+    return str(uid) if uid else None
+
+
+def _decode_base64_url(value: str) -> str | None:
+    padding = "=" * ((4 - (len(value) % 4)) % 4)
+    try:
+        return base64.urlsafe_b64decode(value + padding).decode("utf-8")
+    except Exception:
+        return None
+
+
+def _resolve_dev_bypass_user_id(token: str) -> str | None:
+    prefix = "dev-bypass:"
+    if not token.startswith(prefix):
+        return None
+    encoded_email = token[len(prefix) :].strip()
+    if not encoded_email:
+        return None
+    email = _decode_base64_url(encoded_email)
+    if not email:
+        return None
+    return f"dev:{email.strip().lower()}"
+
+
+def get_user_id(
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),  # noqa: B008
+    supabase_admin: Client | None = Depends(get_supabase_admin),  # noqa: B008
+    settings: Settings = Depends(get_settings),  # noqa: B008
+) -> str:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing bearer token",
+        )
+
+    token = credentials.credentials
+
+    if settings.auth_dev_bypass:
+        maybe_user_id = _resolve_dev_bypass_user_id(token)
+        if maybe_user_id:
+            return maybe_user_id
+
+    if supabase_admin is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Supabase auth is not configured on the backend",
+        )
+
+    try:
+        response = supabase_admin.auth.get_user(token)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired auth token",
+        ) from exc
+
+    user = getattr(response, "user", None)
+    user_id = _extract_user_id(user)
+    if not user_id:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unable to resolve user from auth token",
+        )
+    return user_id

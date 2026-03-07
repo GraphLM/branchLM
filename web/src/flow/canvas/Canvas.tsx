@@ -25,7 +25,6 @@ import { computeChatPosition } from '../layout'
 import { Composer } from '../../ui/Composer'
 import { ChatPanel } from '../../ui/ChatPanel'
 import { useMessaging } from '../messaging/useMessaging'
-import { messagingApi } from '../messaging/messagingApi'
 import type { FlowNode } from '../types'
 import { CanvasToolbar } from './CanvasToolbar'
 
@@ -48,6 +47,7 @@ function getClientPointFromEvent(
 function CanvasInner() {
   const {
     nodes,
+    initialEdges,
     composerText,
     isSubmitting,
     setComposerText,
@@ -55,6 +55,7 @@ function CanvasInner() {
     createBranchChatFromMessage,
     onNodesChange,
     updateChatPosition,
+    syncContextEdges,
     deleteNodeById,
   } = useMessaging()
   const { getNode, screenToFlowPosition, setCenter } = useReactFlow()
@@ -73,19 +74,26 @@ function CanvasInner() {
         })),
     [nodes],
   )
+  useEffect(() => {
+    setEdges(initialEdges)
+  }, [initialEdges])
 
   const handleNodesDelete = useCallback(
     (deletedNodes: Node[]) => {
       const deletedNodeIds = new Set(deletedNodes.map((node) => node.id))
-      setEdges((prev) =>
-        prev.filter((edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target)),
-      )
+      setEdges((prev) => {
+        const nextEdges = prev.filter(
+          (edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target),
+        )
+        syncContextEdges(nextEdges)
+        return nextEdges
+      })
 
       for (const node of deletedNodes) {
         void deleteNodeById(node.id)
       }
     },
-    [deleteNodeById],
+    [deleteNodeById, syncContextEdges],
   )
 
   const handleConnect: OnConnect = useCallback(
@@ -114,10 +122,15 @@ function CanvasInner() {
           return prev
         }
 
-        return addEdge(createContextEdge({ sourceId: connection.source!, targetId: connection.target! }), prev)
+        const nextEdges = addEdge(
+          createContextEdge({ sourceId: connection.source!, targetId: connection.target! }),
+          prev,
+        )
+        syncContextEdges(nextEdges)
+        return nextEdges
       })
     },
-    [isLocked, nodes],
+    [isLocked, nodes, syncContextEdges],
   )
 
   const handleConnectStart: OnConnectStart = useCallback((_event, nodeHandle) => {
@@ -151,9 +164,13 @@ function CanvasInner() {
         return
       }
 
-      setEdges((prev) => addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev))
+      setEdges((prev) => {
+        const nextEdges = addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev)
+        syncContextEdges(nextEdges)
+        return nextEdges
+      })
     },
-    [createBranchChatFromMessage, isLocked, nodes, screenToFlowPosition],
+    [createBranchChatFromMessage, isLocked, nodes, screenToFlowPosition, syncContextEdges],
   )
 
   useEffect(() => {
@@ -162,19 +179,12 @@ function CanvasInner() {
       const filtered = prev.filter(
         (edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target),
       )
+      if (filtered.length !== prev.length) {
+        syncContextEdges(filtered)
+      }
       return filtered.length === prev.length ? prev : filtered
     })
-  }, [nodes])
-
-  useEffect(() => {
-    const timerId = window.setTimeout(() => {
-      void messagingApi.saveGraphLayout({ nodes, edges })
-    }, 500)
-
-    return () => {
-      window.clearTimeout(timerId)
-    }
-  }, [nodes, edges])
+  }, [nodes, syncContextEdges])
 
   const handleNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {
@@ -217,7 +227,7 @@ function CanvasInner() {
   )
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-[color:var(--color-text-primary)]">
+    <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-(--color-text-primary)">
       <ChatPanel
         chats={chatsForPanel}
         onChatClick={focusNodeInView}
@@ -246,7 +256,11 @@ function CanvasInner() {
               return
             }
 
-            setEdges((prev) => prev.filter((edge) => !removeIds.has(edge.id)))
+            setEdges((prev) => {
+              const nextEdges = prev.filter((edge) => !removeIds.has(edge.id))
+              syncContextEdges(nextEdges)
+              return nextEdges
+            })
           }}
           nodes={nodes}
           onNodesChange={onNodesChange}
@@ -266,7 +280,7 @@ function CanvasInner() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-none">
+        <div className="pointer-events-auto">
           <Composer
             disabled={isSubmitting}
             onChange={setComposerText}
