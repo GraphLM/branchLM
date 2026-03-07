@@ -26,7 +26,7 @@ export function Composer({
 
   return (
     <form
-      className="mx-auto mb-3 flex w-[calc(100%-16px)] max-w-4xl gap-2 rounded-2xl border border-[color:var(--color-panel-border)] bg-[color:var(--color-panel)]/90 p-2 shadow-[0_18px_40px_var(--color-chat-shadow)] backdrop-blur md:mb-4 md:w-[min(100%,920px)]"
+      className="pointer-events-auto mx-auto mb-3 flex w-[calc(100%-16px)] max-w-4xl gap-2 rounded-2xl border border-[color:var(--color-panel-border)] bg-[color:var(--color-panel)]/90 p-2 shadow-[0_18px_40px_var(--color-chat-shadow)] backdrop-blur md:mb-4 md:w-[min(100%,920px)]"
       onSubmit={handleSubmit}
     >
       <input

@@ -1,5 +1,6 @@
 import type { ButtonHTMLAttributes } from 'react'
 import { Trash2 } from 'lucide-react'
+import { composeButtonClass } from './buttonStyles'
 
 type NodeDeleteButtonProps = {
   label?: string
@@ -11,7 +12,11 @@ export function NodeDeleteButton({ label = 'Delete', showIcon = true, ...props }
     <button
       {...props}
       aria-label={label}
-      className={`inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[color:var(--color-danger-border)] bg-[color:var(--color-danger-bg)] text-[color:var(--color-danger-text)] transition hover:brightness-110 ${props.className ?? ''}`.trim()}
+      className={composeButtonClass({
+        variant: 'primary',
+        size: 'icon',
+        className: props.className,
+      })}
       type="button"
     >
       {showIcon ? <Trash2 size={13} strokeWidth={2.1} /> : null}

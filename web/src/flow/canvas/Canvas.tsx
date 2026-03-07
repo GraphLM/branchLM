@@ -227,7 +227,7 @@ function CanvasInner() {
       </div>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-auto">
+        <div className="pointer-events-none">
           <Composer
             disabled={isSubmitting}
             onChange={setComposerText}

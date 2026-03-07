@@ -1,5 +1,6 @@
 import { Panel, useReactFlow } from '@xyflow/react'
 import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from 'lucide-react'
+import { composeButtonClass } from '../../ui/buttonStyles'
 
 type CanvasToolbarProps = {
   locked: boolean
@@ -7,18 +8,21 @@ type CanvasToolbarProps = {
   onAutoLayout: () => void
 }
 
-const buttonClassName =
-  'group flex h-9 w-9 items-center justify-center rounded-xl border border-[color:var(--color-panel-border)] bg-[color:var(--color-panel)]/90 text-[color:var(--color-text-secondary)] shadow-[0_10px_24px_var(--color-chat-shadow)] transition hover:border-[color:var(--color-control-bg)] hover:text-[color:var(--color-text-primary)]'
+const buttonClassName = composeButtonClass({ variant: 'primary', size: 'icon' })
 
 export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasToolbarProps) {
   const { zoomIn, zoomOut, fitView } = useReactFlow()
 
   return (
-    <Panel className="mb-4 ml-4" position="bottom-left">
-      <div className="flex flex-col gap-2" onMouseDown={(event) => event.stopPropagation()}>
+    <Panel className="mb-4 ml-4 z-30" position="bottom-left">
+      <div
+        className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-[color:var(--color-panel-border)] bg-[color:var(--color-panel)]/75 p-2 backdrop-blur-sm"
+        onClick={(event) => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
+      >
         <button
           aria-label="Zoom in"
-          className={buttonClassName}
+          className={`${buttonClassName} cursor-pointer`}
           onClick={() => zoomIn({ duration: 180 })}
           title="Zoom in"
           type="button"
@@ -27,7 +31,7 @@ export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasTool
         </button>
         <button
           aria-label="Zoom out"
-          className={buttonClassName}
+          className={`${buttonClassName} cursor-pointer`}
           onClick={() => zoomOut({ duration: 180 })}
           title="Zoom out"
           type="button"
@@ -36,7 +40,7 @@ export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasTool
         </button>
         <button
           aria-label="Center view"
-          className={buttonClassName}
+          className={`${buttonClassName} cursor-pointer`}
           onClick={() => fitView({ duration: 220, padding: 0.2 })}
           title="Center view"
           type="button"
@@ -45,7 +49,7 @@ export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasTool
         </button>
         <button
           aria-label="Auto layout"
-          className={buttonClassName}
+          className={`${buttonClassName} cursor-pointer`}
           onClick={onAutoLayout}
           title="Auto layout"
           type="button"
@@ -54,7 +58,7 @@ export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasTool
         </button>
         <button
           aria-label={locked ? 'Unlock canvas' : 'Lock canvas'}
-          className={buttonClassName}
+          className={`${buttonClassName} cursor-pointer`}
           onClick={onLockToggle}
           title={locked ? 'Unlock canvas' : 'Lock canvas'}
           type="button"
