@@ -1,6 +1,5 @@
-import { Handle, Position, type NodeProps } from "@xyflow/react";
+import { Handle, Position, useNodeConnections, type NodeProps } from "@xyflow/react";
 import type { MessageNode } from "../../flow/types";
-import { useFlowActions } from "../../flow/actionsContext";
 import MessageBubble from "./MessageBubble";
 
 type ExtraProps = {
@@ -12,21 +11,24 @@ export default function MessageNodeComponent(
   props: NodeProps<MessageNode> & ExtraProps,
 ) {
   const { id, data, selected } = props;
-  const actions = useFlowActions();
   const isPendingSource = props.pendingSourceMessageId === id;
+  const outgoingConnections = useNodeConnections({ id, handleType: "source" });
+  const hasSourceConnection = outgoingConnections.length > 0;
 
   return (
     <MessageBubble
       role={data.role}
       text={data.text}
       selected={selected}
-      onDelete={() => actions.deleteMessage(id)}
       sourceHandle={
         <Handle
           type="source"
           position={Position.Right}
           className={[
             "rf-handle-connect rf-handle-connect--source bg-(--handle-bg)! border-(--handle-border)! cursor-pointer",
+            !isPendingSource && !hasSourceConnection
+              ? "opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
+              : "",
             isPendingSource
               ? "rf-handle-connect--active ring-2 ring-(--selection-ring) border-(--selection-border)!"
               : "",
