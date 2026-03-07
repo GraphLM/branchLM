@@ -157,10 +157,16 @@ export function useCanvas(): UseCanvasResult {
       updateChatDraft: messaging.updateChatDraft,
       sendChatMessage: messaging.sendChatMessage,
       deleteMessage: graph.deleteMessageById,
+      deleteContextNode: graph.deleteContextNodeById,
+      uploadContextAsset: graph.uploadAssetToContextNode,
+      uploadContextText: graph.uploadTextToContextNode,
     }),
     [
       graph.deleteChatById,
+      graph.deleteContextNodeById,
       graph.deleteMessageById,
+      graph.uploadAssetToContextNode,
+      graph.uploadTextToContextNode,
       messaging.sendChatMessage,
       messaging.updateChatDraft,
       messaging.updateChatTitle,
@@ -188,6 +194,15 @@ export function useCanvas(): UseCanvasResult {
     onEdgeMouseEnter: graph.onEdgeMouseEnter,
     onEdgeMouseLeave: graph.onEdgeMouseLeave,
     onAutoLayout: graph.onAutoLayout,
+    onAddContextNode: () => {
+      if (!selectedWorkspaceId) return;
+      void graph.createContextNodeAt(
+        screenToFlowPosition({
+          x: window.innerWidth / 2 + 100,
+          y: window.innerHeight / 2 - 100,
+        }),
+      );
+    },
     onLockToggle: () => graph.setIsLocked((prev) => !prev),
     onPanelOpen: panel.onPanelOpen,
     onPanelClose: panel.onPanelClose,

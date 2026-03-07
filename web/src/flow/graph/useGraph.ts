@@ -8,9 +8,23 @@ import {
   type OnEdgesChange,
   type OnNodesChange,
 } from "@xyflow/react";
-import { createChatNode, createMessageNode, layoutChatNodesInGrid } from "../layout";
+import {
+  createChatNode,
+  createContextNode,
+  createMessageNode,
+  layoutChatNodesInGrid,
+} from "../layout";
 import type { AppNode } from "../types";
-import { deleteChat, deleteMessage, fetchGraph, saveGraphLayout } from "./graphApi";
+import {
+  createContextNode as createContextNodeApi,
+  deleteChat,
+  deleteContextNode,
+  deleteMessage,
+  fetchGraph,
+  saveGraphLayout,
+  uploadContextNodeAsset,
+  uploadContextNodeTextAsset,
+} from "./graphApi";
 import { applyAutoLayout, collectCascadeRemoval, styleRenderedEdges } from "./graphModel";
 
 function persistCascadeDeletes(params: {
@@ -66,7 +80,10 @@ export function useGraph(params: {
         const data = await fetchGraph({ workspaceId, signal: controller.signal });
         if (!data || cancelled) return;
 
-        const serverHasData = (data.chats?.length ?? 0) > 0 || (data.messages?.length ?? 0) > 0;
+        const serverHasData =
+          (data.chats?.length ?? 0) > 0 ||
+          (data.messages?.length ?? 0) > 0 ||
+          (data.contextNodes?.length ?? 0) > 0;
 
         if (!serverHasData) {
           setNodes([]);
@@ -90,14 +107,35 @@ export function useGraph(params: {
             }),
           );
         }
+        for (const n of data.contextNodes ?? []) {
+          nextNodes.push(
+            createContextNode({
+              id: n.id,
+              workspaceId: n.workspaceId,
+              position: n.position,
+              title: n.title,
+              assetCount: n.assetCount ?? 0,
+            }),
+          );
+        }
 
-        const nextEdges: Edge[] = (data.contextEdges ?? []).map((e) => ({
-          id: `ctx:${e.fromMessageId}->${e.toChatId}`,
-          source: e.fromMessageId,
-          target: e.toChatId,
-          markerEnd: { type: MarkerType.ArrowClosed },
-          animated: false,
-        }));
+        const nextEdges: Edge[] = (data.contextEdges ?? [])
+          .map((e) => ({
+            id: `ctx:${e.fromMessageId}->${e.toChatId}`,
+            source: e.fromMessageId,
+            target: e.toChatId,
+            markerEnd: { type: MarkerType.ArrowClosed },
+            animated: false,
+          }))
+          .concat(
+            (data.contextNodeEdges ?? []).map((e) => ({
+              id: `ctxn:${e.fromContextNodeId}->${e.toChatId}`,
+              source: e.fromContextNodeId,
+              target: e.toChatId,
+              markerEnd: { type: MarkerType.ArrowClosed },
+              animated: false,
+            })),
+          );
 
         setNodes(applyAutoLayout(nextNodes));
         setEdges(nextEdges);
@@ -188,10 +226,133 @@ export function useGraph(params: {
     [deleteNodesCascade],
   );
 
+  const deleteContextNodeById = useCallback(
+    (contextNodeId: string) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      setNodes((nodesSnapshot) =>
+        nodesSnapshot.filter((n) => n.id !== contextNodeId),
+      );
+      setEdges((edgesSnapshot) =>
+        edgesSnapshot.filter((e) => e.source !== contextNodeId && e.target !== contextNodeId),
+      );
+      void deleteContextNode({ workspaceId, contextNodeId }).catch(() => {});
+    },
+    [params.workspaceId],
+  );
+
+  const createContextNodeAt = useCallback(
+    async (position: { x: number; y: number }) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      const created = await createContextNodeApi({
+        workspaceId,
+        title: "Context node",
+        position,
+      });
+      if (!created) return;
+      setNodes((ns) =>
+        applyAutoLayout(
+          ns.concat(
+            createContextNode({
+              id: created.id,
+              workspaceId: created.workspaceId,
+              position: created.position,
+              title: created.title,
+              assetCount: 0,
+            }),
+          ),
+        ),
+      );
+    },
+    [params.workspaceId],
+  );
+
+  const uploadAssetToContextNode = useCallback(
+    async (contextNodeId: string, file: File) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      try {
+        const created = await uploadContextNodeAsset({ workspaceId, contextNodeId, file });
+        setNodes((nodesSnapshot) =>
+          nodesSnapshot.map((n) => {
+            if (n.id !== contextNodeId || n.type !== "context") return n;
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                assetCount: 1,
+                statusText:
+                  created.status === "failed"
+                    ? created.statusMessage ?? "Upload failed"
+                    : `Source: ${created.fileName} (${created.status})`,
+              },
+            };
+          }),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Upload failed";
+        setNodes((nodesSnapshot) =>
+          nodesSnapshot.map((n) =>
+            n.id === contextNodeId && n.type === "context"
+              ? { ...n, data: { ...n.data, statusText: message } }
+              : n,
+          ),
+        );
+      }
+    },
+    [params.workspaceId],
+  );
+
+  const uploadTextToContextNode = useCallback(
+    async (contextNodeId: string, text: string) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      try {
+        const created = await uploadContextNodeTextAsset({
+          workspaceId,
+          contextNodeId,
+          text,
+        });
+        setNodes((nodesSnapshot) =>
+          nodesSnapshot.map((n) => {
+            if (n.id !== contextNodeId || n.type !== "context") return n;
+            return {
+              ...n,
+              data: {
+                ...n.data,
+                assetCount: 1,
+                statusText:
+                  created.status === "failed"
+                    ? created.statusMessage ?? "Upload failed"
+                    : `Source: pasted text (${created.status})`,
+              },
+            };
+          }),
+        );
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Upload failed";
+        setNodes((nodesSnapshot) =>
+          nodesSnapshot.map((n) =>
+            n.id === contextNodeId && n.type === "context"
+              ? { ...n, data: { ...n.data, statusText: message } }
+              : n,
+          ),
+        );
+      }
+    },
+    [params.workspaceId],
+  );
+
   const onNodesChange: OnNodesChange<AppNode> = useCallback(
     (changes) => {
       const workspaceId = params.workspaceId;
       const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
+      const removedContextNodeIds = new Set(
+        nodes
+          .filter((n) => removedIds.has(n.id) && n.type === "context")
+          .map((n) => n.id),
+      );
 
       if (workspaceId && removedIds.size > 0) {
         const removal = collectCascadeRemoval(nodes, removedIds);
@@ -200,6 +361,9 @@ export function useGraph(params: {
           chatIds: removal.removedChatIds,
           messageIds: removal.removedMessageIds,
         });
+        for (const contextNodeId of removedContextNodeIds) {
+          void deleteContextNode({ workspaceId, contextNodeId }).catch(() => {});
+        }
       }
 
       setNodes((nodesSnapshot) => {
@@ -248,6 +412,10 @@ export function useGraph(params: {
     setIsLocked,
     deleteChatById,
     deleteMessageById,
+    deleteContextNodeById,
+    createContextNodeAt,
+    uploadAssetToContextNode,
+    uploadTextToContextNode,
     onNodesChange,
     onEdgesChange,
     onAutoLayout,

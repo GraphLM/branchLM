@@ -64,7 +64,7 @@ export function useConnections(params: UseConnectionsParams) {
       if (connectionState.isValid === true) return;
 
       const fromNode = nodesRef.current.find((n) => n.id === fromNodeId);
-      if (!fromNode || fromNode.type !== "message") return;
+      if (!fromNode || (fromNode.type !== "message" && fromNode.type !== "context")) return;
       if (!workspaceId) return;
 
       const clientPoint =

@@ -11,6 +11,17 @@ export function buildChatPositions(nodes: AppNode[]): Record<string, { x: number
   return chatPositions;
 }
 
+export function buildContextNodePositions(
+  nodes: AppNode[],
+): Record<string, { x: number; y: number }> {
+  const contextNodePositions: Record<string, { x: number; y: number }> = {};
+  for (const n of nodes) {
+    if (n.type !== "context") continue;
+    contextNodePositions[n.id] = { x: n.position.x, y: n.position.y };
+  }
+  return contextNodePositions;
+}
+
 export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
   const messagesByChat = new Map<string, MessageFlowNode[]>();
   for (const n of nodes) {
@@ -101,6 +112,22 @@ export function buildContextEdgesForSave(params: {
       const current = nextRankByToChat.get(e.target) ?? 0;
       nextRankByToChat.set(e.target, current + 1);
       return { fromMessageId: e.source, toChatId: e.target, rank: current };
+    });
+}
+
+export function buildContextNodeEdgesForSave(params: {
+  nodes: AppNode[];
+  edges: Edge[];
+}): Array<{ fromContextNodeId: string; toChatId: string; rank: number }> {
+  const typeById = new Map(params.nodes.map((n) => [n.id, n.type] as const));
+  const nextRankByToChat = new Map<string, number>();
+
+  return params.edges
+    .filter((e) => typeById.get(e.source) === "context" && typeById.get(e.target) === "chat")
+    .map((e) => {
+      const current = nextRankByToChat.get(e.target) ?? 0;
+      nextRankByToChat.set(e.target, current + 1);
+      return { fromContextNodeId: e.source, toChatId: e.target, rank: current };
     });
 }
 

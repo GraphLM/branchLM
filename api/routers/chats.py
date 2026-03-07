@@ -33,8 +33,9 @@ def patch_chat(
     body: PatchChatBody,
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
-    ChatService(store).patch_chat(
+    ChatService(store, settings).patch_chat(
         user_id=user_id,
         workspace_id=workspace_id,
         chat_id=chat_id,
@@ -48,5 +49,8 @@ def delete_chat(
     chat_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> None:
-    ChatService(store).delete_chat(user_id=user_id, workspace_id=workspace_id, chat_id=chat_id)
+    ChatService(store, settings).delete_chat(
+        user_id=user_id, workspace_id=workspace_id, chat_id=chat_id
+    )

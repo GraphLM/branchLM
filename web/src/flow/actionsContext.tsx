@@ -7,6 +7,9 @@ export type FlowActions = {
   updateChatDraft(chatId: string, draft: string): void;
   sendChatMessage(chatId: string): void;
   deleteMessage(messageId: string): void;
+  deleteContextNode(contextNodeId: string): void;
+  uploadContextAsset(contextNodeId: string, file: File): Promise<void>;
+  uploadContextText(contextNodeId: string, text: string): Promise<void>;
 };
 
 const FlowActionsContext = createContext<FlowActions | null>(null);

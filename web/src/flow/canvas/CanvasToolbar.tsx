@@ -1,8 +1,9 @@
 import { Panel, useReactFlow } from "@xyflow/react";
-import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from "lucide-react";
+import { FilePlus2, LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from "lucide-react";
 
 type Props = {
   onAutoLayout: () => void;
+  onAddContextNode: () => void;
   locked: boolean;
   onLockToggle: () => void;
 };
@@ -10,7 +11,12 @@ type Props = {
 const buttonBase =
   "group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)";
 
-export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Props) {
+export default function CanvasToolbar({
+  onAutoLayout,
+  onAddContextNode,
+  locked,
+  onLockToggle,
+}: Props) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   return (
@@ -54,6 +60,15 @@ export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Pr
           onClick={onAutoLayout}
         >
           <LayoutGrid size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+        </button>
+        <button
+          type="button"
+          className={buttonBase}
+          aria-label="Create context node"
+          title="Create context node"
+          onClick={onAddContextNode}
+        >
+          <FilePlus2 size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
         <button
           type="button"

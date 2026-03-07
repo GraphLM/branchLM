@@ -1,7 +1,12 @@
 import type { Edge, NodeProps, OnConnect, OnConnectEnd, OnConnectStart, OnEdgesChange, OnNodesChange } from "@xyflow/react";
 import type { MouseEvent, ReactElement } from "react";
 import type { FlowActions } from "../actionsContext";
-import type { AppNode, ChatNode as ChatFlowNode, MessageNode as MessageFlowNode } from "../types";
+import type {
+  AppNode,
+  ChatNode as ChatFlowNode,
+  ContextNode as ContextFlowNode,
+  MessageNode as MessageFlowNode,
+} from "../types";
 
 export type UseCanvasResult = {
   nodes: AppNode[];
@@ -15,6 +20,7 @@ export type UseCanvasResult = {
   actions: FlowActions;
   nodeTypes: {
     chat: (props: NodeProps<ChatFlowNode>) => ReactElement;
+    context: (props: NodeProps<ContextFlowNode>) => ReactElement;
     message: (props: NodeProps<MessageFlowNode>) => ReactElement;
   };
   setComposerDraft: (value: string) => void;
@@ -27,6 +33,7 @@ export type UseCanvasResult = {
   onEdgeMouseEnter: (_event: MouseEvent, edge: Edge) => void;
   onEdgeMouseLeave: () => void;
   onAutoLayout: () => void;
+  onAddContextNode: () => void;
   onLockToggle: () => void;
   onPanelOpen: () => void;
   onPanelClose: () => void;

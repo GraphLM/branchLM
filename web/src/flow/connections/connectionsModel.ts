@@ -20,7 +20,10 @@ export function isMessageToChatConnection(params: {
 }): boolean {
   const sourceNode = params.nodes.find((n) => n.id === params.sourceId);
   const targetNode = params.nodes.find((n) => n.id === params.targetId);
-  return sourceNode?.type === "message" && targetNode?.type === "chat";
+  return (
+    (sourceNode?.type === "message" || sourceNode?.type === "context") &&
+    targetNode?.type === "chat"
+  );
 }
 
 export function createContextEdgeFromConnection(connection: Connection): Edge {

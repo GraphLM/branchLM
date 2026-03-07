@@ -74,6 +74,7 @@ export default function Canvas({ onLogout }: Props) {
           />
           <CanvasToolbar
             onAutoLayout={canvas.onAutoLayout}
+            onAddContextNode={canvas.onAddContextNode}
             locked={canvas.isLocked}
             onLockToggle={canvas.onLockToggle}
           />
