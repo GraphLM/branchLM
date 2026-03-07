@@ -61,8 +61,10 @@ class ChatGenerationService:
         client_ip: str,
     ) -> dict[str, Any]:
         self._ensure_chat_exists(user_id=user_id, chat_id=chat_id)
+
         prompt = self._validate_prompt(body.text)
         self._enforce_rate_limit(user_id=user_id, client_ip=client_ip)
+
         conversation = self._build_conversation(user_id=user_id, chat_id=chat_id, prompt=prompt)
         reply_text = self._call_llm(conversation)
 
@@ -91,7 +93,7 @@ class ChatGenerationService:
             raise HTTPException(status_code=404, detail="Chat not found")
 
     def _validate_prompt(self, text: str) -> str:
-        prompt = text.replace("\x00", "").replace("\r\n", "\n").strip()
+        prompt = _normalize_prompt(text)
         if not prompt:
             raise HTTPException(status_code=400, detail="Message text is required")
         if len(prompt) > self._settings.max_prompt_chars:
@@ -112,7 +114,9 @@ class ChatGenerationService:
             headers={"Retry-After": str(decision.retry_after_seconds)},
         )
 
-    def _build_conversation(self, *, user_id: str, chat_id: str, prompt: str) -> list[dict[str, str]]:
+    def _build_conversation(
+        self, *, user_id: str, chat_id: str, prompt: str
+    ) -> list[dict[str, str]]:
         prior_messages = self._store.list_messages_for_chat(user_id, chat_id)
         if self._settings.max_history_messages > 0:
             prior_messages = prior_messages[-self._settings.max_history_messages :]
@@ -142,3 +146,7 @@ class ChatGenerationService:
                 status_code=502,
                 detail="The language model is temporarily unavailable.",
             ) from exc
+
+
+def _normalize_prompt(text: str) -> str:
+    return text.replace("\x00", "").replace("\r\n", "\n").strip()
