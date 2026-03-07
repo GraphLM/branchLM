@@ -4,9 +4,10 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
-from deps import get_store, get_user_id
+from deps import get_settings, get_store, get_user_id
 from schemas import CreateChatBody, PatchChatBody
 from services.chat_service import ChatService
+from settings import Settings
 from store.base import Store
 
 router = APIRouter()
@@ -18,8 +19,11 @@ def create_chat(
     body: CreateChatBody,
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
+    settings: Annotated[Settings, Depends(get_settings)],
 ) -> dict:
-    return ChatService(store).create_chat(user_id=user_id, workspace_id=workspace_id, body=body)
+    return ChatService(store, settings).create_chat(
+        user_id=user_id, workspace_id=workspace_id, body=body
+    )
 
 
 @router.patch("/api/workspaces/{workspace_id}/chats/{chat_id}")

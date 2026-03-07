@@ -105,3 +105,9 @@ def get_store(request: Request) -> Store:
     store = getattr(request.app.state, "store", None)
     assert store is not None, "Store not initialized on app.state"
     return store
+
+
+def get_metrics(request: Request) -> Any:
+    metrics = getattr(request.app.state, "metrics", None)
+    assert metrics is not None, "Metrics not initialized on app.state"
+    return metrics

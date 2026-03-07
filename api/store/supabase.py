@@ -105,6 +105,22 @@ class SupabaseStore:
         )
         return [row["id"] for row in rows]
 
+    @staticmethod
+    def _is_missing_chat_model_column_error(exc: HTTPException) -> bool:
+        detail = str(exc.detail).lower()
+        return (
+            (("pgrst204" in detail) and ("'model' column" in detail) and ("chats" in detail))
+            or ("42703" in detail and "chats.model" in detail)
+            or ("column chats.model does not exist" in detail)
+        )
+
+    @staticmethod
+    def _is_missing_context_snapshot_table_error(exc: HTTPException) -> bool:
+        detail = str(exc.detail).lower()
+        return (
+            "chat_context_messages" in detail and ("pgrst205" in detail or "not found" in detail)
+        ) or ("supabase tables not found" in detail)
+
     def workspace_exists(self, user_id: str, workspace_id: str) -> bool:
         rows = (
             self._wrap_postgrest(
@@ -143,6 +159,47 @@ class SupabaseStore:
             or []
         )
         return len(rows) == 1
+
+    def get_chat(self, user_id: str, workspace_id: str, chat_id: str) -> dict[str, Any] | None:
+        try:
+            rows = (
+                self._wrap_postgrest(
+                    "select chat row",
+                    lambda: (
+                        self._client.table("chats")
+                        .select("id,workspace_id,title,position_x,position_y,model")
+                        .eq("id", chat_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        except HTTPException as exc:
+            if not self._is_missing_chat_model_column_error(exc):
+                raise
+            rows = (
+                self._wrap_postgrest(
+                    "select chat row",
+                    lambda: (
+                        self._client.table("chats")
+                        .select("id,workspace_id,title,position_x,position_y")
+                        .eq("id", chat_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        return rows[0] if rows else None
 
     def list_workspaces(self, user_id: str) -> list[dict[str, Any]]:
         return (
@@ -216,22 +273,42 @@ class SupabaseStore:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        return (
-            self._wrap_postgrest(
-                "select chats",
-                lambda: (
-                    self._client.table("chats")
-                    .select("id,title,position_x,position_y,workspace_id")
-                    .eq("user_id", user_id)
-                    .eq("workspace_id", workspace_id)
-                    .order("created_at")
-                    .execute()
-                    .data
-                    or []
-                ),
+        try:
+            return (
+                self._wrap_postgrest(
+                    "select chats",
+                    lambda: (
+                        self._client.table("chats")
+                        .select("id,title,position_x,position_y,workspace_id,model")
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .order("created_at")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
             )
-            or []
-        )
+        except HTTPException as exc:
+            if not self._is_missing_chat_model_column_error(exc):
+                raise
+            return (
+                self._wrap_postgrest(
+                    "select chats",
+                    lambda: (
+                        self._client.table("chats")
+                        .select("id,title,position_x,position_y,workspace_id")
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .order("created_at")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
 
     def list_messages(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
         chat_ids = self._workspace_chat_ids(user_id, workspace_id)
@@ -301,6 +378,33 @@ class SupabaseStore:
             or []
         )
 
+    def list_context_messages_for_chat(
+        self, user_id: str, workspace_id: str, chat_id: str
+    ) -> list[dict[str, Any]]:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            return []
+        try:
+            return (
+                self._wrap_postgrest(
+                    "select context message snapshots",
+                    lambda: (
+                        self._client.table("chat_context_messages")
+                        .select("message_id,role,text,rank")
+                        .eq("user_id", user_id)
+                        .eq("to_chat_id", chat_id)
+                        .order("rank")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_snapshot_table_error(exc):
+                return []
+            raise
+
     def create_chat(
         self,
         user_id: str,
@@ -308,35 +412,45 @@ class SupabaseStore:
         title: str,
         position_x: float,
         position_y: float,
+        model: str | None = None,
     ) -> dict[str, Any]:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
-        created = self._wrap_postgrest(
-            "insert chat",
-            lambda: (
-                self._client.table("chats")
-                .insert(
-                    {
-                        "user_id": user_id,
-                        "workspace_id": workspace_id,
-                        "title": title,
-                        "position_x": position_x,
-                        "position_y": position_y,
-                    }
-                )
-                .execute()
-                .data
-            ),
-        )
+        payload = {
+            "user_id": user_id,
+            "workspace_id": workspace_id,
+            "title": title,
+            "position_x": position_x,
+            "position_y": position_y,
+        }
+        if model:
+            payload["model"] = model
+
+        try:
+            created = self._wrap_postgrest(
+                "insert chat",
+                lambda: self._client.table("chats").insert(payload).execute().data,
+            )
+        except HTTPException as exc:
+            if not (model and self._is_missing_chat_model_column_error(exc)):
+                raise
+            payload.pop("model", None)
+            created = self._wrap_postgrest(
+                "insert chat",
+                lambda: self._client.table("chats").insert(payload).execute().data,
+            )
         if not created:
             raise HTTPException(status_code=500, detail="Failed to create chat")
         row = created[0]
-        return {"id": row["id"], "title": row["title"], "workspace_id": row["workspace_id"]}
+        return {
+            "id": row["id"],
+            "title": row["title"],
+            "workspace_id": row["workspace_id"],
+            "model": row.get("model"),
+        }
 
-    def update_chat_title(
-        self, user_id: str, workspace_id: str, chat_id: str, title: str
-    ) -> None:
+    def update_chat_title(self, user_id: str, workspace_id: str, chat_id: str, title: str) -> None:
         if not self.chat_exists(user_id, workspace_id, chat_id):
             raise HTTPException(status_code=404, detail="Chat not found")
 
@@ -488,25 +602,92 @@ class SupabaseStore:
                     .execute()
                 ),
             )
+            try:
+                self._wrap_postgrest(
+                    "delete context snapshots",
+                    lambda: (
+                        self._client.table("chat_context_messages")
+                        .delete()
+                        .eq("user_id", user_id)
+                        .in_("to_chat_id", chat_ids)
+                        .execute()
+                    ),
+                )
+            except HTTPException as exc:
+                if not self._is_missing_context_snapshot_table_error(exc):
+                    raise
 
         if not edges:
             return
 
         rows = []
+        grouped_edges: dict[str, list[dict[str, Any]]] = {}
         for edge in edges:
             if edge["to_chat_id"] not in chat_ids:
                 continue
-            rows.append(
-                {
-                    "user_id": user_id,
-                    "from_message_id": edge["from_message_id"],
-                    "to_chat_id": edge["to_chat_id"],
-                    "rank": edge["rank"],
-                }
-            )
+            row = {
+                "user_id": user_id,
+                "from_message_id": edge["from_message_id"],
+                "to_chat_id": edge["to_chat_id"],
+                "rank": edge["rank"],
+            }
+            rows.append(row)
+            grouped_edges.setdefault(edge["to_chat_id"], []).append(row)
 
         if rows:
             self._wrap_postgrest(
                 "insert context_edges",
                 lambda: self._client.table("context_edges").insert(rows).execute(),
             )
+
+        messages = self.list_messages(user_id, workspace_id)
+        messages_by_id = {message["id"]: message for message in messages}
+        messages_by_chat: dict[str, list[dict[str, Any]]] = {}
+        for message in messages:
+            messages_by_chat.setdefault(message["chat_id"], []).append(message)
+        for chat_messages in messages_by_chat.values():
+            chat_messages.sort(key=lambda message: message["ordinal"])
+
+        snapshot_rows: list[dict[str, Any]] = []
+        for to_chat_id, target_edges in grouped_edges.items():
+            target_edges.sort(key=lambda edge: edge["rank"])
+            seen_message_ids: set[str] = set()
+            rank = 0
+            for edge in target_edges:
+                source_message = messages_by_id.get(edge["from_message_id"])
+                if not source_message:
+                    continue
+                source_chat_messages = messages_by_chat.get(source_message["chat_id"], [])
+                include_until_ordinal = source_message["ordinal"]
+                if source_message["role"] == "user":
+                    include_until_ordinal -= 1
+
+                for message in source_chat_messages:
+                    if message["ordinal"] > include_until_ordinal:
+                        break
+                    if message["id"] in seen_message_ids:
+                        continue
+                    seen_message_ids.add(message["id"])
+                    snapshot_rows.append(
+                        {
+                            "user_id": user_id,
+                            "to_chat_id": to_chat_id,
+                            "message_id": message["id"],
+                            "role": message["role"],
+                            "text": message["text"],
+                            "rank": rank,
+                        }
+                    )
+                    rank += 1
+
+        if snapshot_rows:
+            try:
+                self._wrap_postgrest(
+                    "insert context snapshots",
+                    lambda: (
+                        self._client.table("chat_context_messages").insert(snapshot_rows).execute()
+                    ),
+                )
+            except HTTPException as exc:
+                if not self._is_missing_context_snapshot_table_error(exc):
+                    raise
