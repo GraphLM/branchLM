@@ -9,7 +9,7 @@ export default function SendButton({ onClick, title = "Send" }: Props) {
   return (
     <button
       type="button"
-      className="relative rounded-lg border border-transparent bg-transparent p-2 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
+      className="group relative rounded-lg border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
       title={title}
       aria-label={title}
       onMouseDown={(e) => {

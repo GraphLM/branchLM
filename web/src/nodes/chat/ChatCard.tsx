@@ -102,18 +102,16 @@ export default function ChatCard(props: Props) {
       >
         {targetHandle}
 
-        <div className="absolute left-0 right-0 bottom-0 px-2 py-2">
-          <div className="flex gap-2">
-            <input
-              className="nodrag flex-1 rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-              value={draft}
-              onChange={(e) => onDraftChange(e.target.value)}
-              onMouseDown={(e) => e.stopPropagation()}
-              onClick={(e) => e.stopPropagation()}
-              placeholder="Send a message…"
-            />
-            <SendButton onClick={onSend} />
-          </div>
+        <div className="absolute left-2 right-2 bottom-2 flex items-center rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1">
+          <input
+            className="nodrag flex-1 bg-transparent px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none"
+            value={draft}
+            onChange={(e) => onDraftChange(e.target.value)}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            placeholder="Send a message…"
+          />
+          <SendButton onClick={onSend} />
         </div>
       </div>
     </div>
