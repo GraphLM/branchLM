@@ -1,1 +1,25 @@
-@import "tailwindcss"
+@import "tailwindcss";
+
+:root {
+  --color-canvas-base: #0e0f13;
+  --color-canvas-accent: #1a1330;
+  --color-grid: #2a2440;
+  --color-panel: #171821;
+  --color-panel-border: #2f3142;
+  --color-chat-border: #3a3d52;
+  --color-chat-shadow: rgba(3, 4, 8, 0.52);
+  --color-message-user: #2a1d46;
+  --color-message-app: #20222f;
+  --color-message-user-border: #7c5cff;
+  --color-message-app-border: #474b61;
+  --color-input-bg: #141620;
+  --color-input-border: #3b3f54;
+  --color-control-bg: #8b5cf6;
+  --color-control-bg-hover: #7c3aed;
+  --color-control-text: #f5f3ff;
+  --color-danger-bg: #341922;
+  --color-danger-border: #8b3a58;
+  --color-danger-text: #fecdd3;
+  --color-text-primary: #ececf1;
+  --color-text-secondary: #a6a8b5;
+}
