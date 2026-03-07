@@ -136,3 +136,20 @@ body {
 .elev-3 {
   box-shadow: var(--shadow-3);
 }
+
+.chat-node-resize-line {
+  border-color: transparent !important;
+}
+
+.chat-node-resize-handle {
+  width: 13px !important;
+  height: 13px !important;
+  border: 1px solid var(--handle-border) !important;
+  background: var(--handle-bg) !important;
+  border-radius: 9999px !important;
+  box-shadow: var(--shadow-1);
+}
+
+.chat-node-resize-handle:hover {
+  box-shadow: var(--handle-hover-shadow);
+}

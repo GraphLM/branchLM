@@ -2,12 +2,17 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Position(BaseModel):
     x: float
     y: float
+
+
+class Size(BaseModel):
+    width: float
+    height: float
 
 
 class CreateWorkspaceBody(BaseModel):
@@ -46,4 +51,5 @@ class ContextEdgeIn(BaseModel):
 
 class GraphLayoutPutBody(BaseModel):
     chatPositions: dict[str, Position]
+    chatSizes: dict[str, Size] = Field(default_factory=dict)
     contextEdges: list[ContextEdgeIn]

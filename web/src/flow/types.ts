@@ -4,6 +4,7 @@ export type ChatNodeData = {
   title: string;
   draft: string;
   focusToken?: number;
+  isSizeManual?: boolean;
 };
 
 export type MessageNodeData = {

@@ -234,6 +234,30 @@ def test_chat_patch_and_delete() -> None:
     assert not any(chat["id"] == chat_id for chat in graph_after_delete.json()["chats"])
 
 
+def test_graph_layout_persists_chat_size() -> None:
+    client = TestClient(create_app())
+
+    workspace_id = _create_workspace(client, "Workspace")
+    chat_id = _create_chat(client, workspace_id, "Resizable chat")
+
+    put_resp = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {chat_id: {"x": 140, "y": 260}},
+            "chatSizes": {chat_id: {"width": 620, "height": 540}},
+            "contextEdges": [],
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert put_resp.status_code == 200
+
+    graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    assert graph_resp.status_code == 200
+    chat = next(c for c in graph_resp.json()["chats"] if c["id"] == chat_id)
+    assert chat["position"] == {"x": 140, "y": 260}
+    assert chat["size"] == {"width": 620, "height": 540}
+
+
 def test_context_splicing_from_user_message_excludes_the_target_user_message() -> None:
     app = create_app()
     app.state.settings = replace(

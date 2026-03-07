@@ -210,6 +210,8 @@ class MemoryStore:
             "title": title,
             "position_x": position_x,
             "position_y": position_y,
+            "width": None,
+            "height": None,
             "model": model,
             "created_at": now,
             "updated_at": now,
@@ -304,21 +306,29 @@ class MemoryStore:
             if snapshot["user_id"] == user_id and snapshot["message_id"] == message_id:
                 del self._context_messages[snapshot_id]
 
-    def update_chat_positions(
+    def update_chat_layout(
         self,
         user_id: str,
         workspace_id: str,
         positions: dict[str, tuple[float, float]],
+        sizes: dict[str, tuple[float, float]],
     ) -> None:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
         now = datetime.now(timezone.utc).isoformat()
-        for chat_id, (x, y) in positions.items():
+        target_chat_ids = set(positions) | set(sizes)
+        for chat_id in target_chat_ids:
             chat = self._chats.get(chat_id)
             if chat and chat["user_id"] == user_id and chat["workspace_id"] == workspace_id:
-                chat["position_x"] = x
-                chat["position_y"] = y
+                if chat_id in positions:
+                    x, y = positions[chat_id]
+                    chat["position_x"] = x
+                    chat["position_y"] = y
+                if chat_id in sizes:
+                    width, height = sizes[chat_id]
+                    chat["width"] = width
+                    chat["height"] = height
                 chat["updated_at"] = now
 
     def replace_context_edges(

@@ -55,11 +55,12 @@ class Store(Protocol):
 
     def delete_message(self, user_id: str, workspace_id: str, message_id: str) -> None: ...
 
-    def update_chat_positions(
+    def update_chat_layout(
         self,
         user_id: str,
         workspace_id: str,
         positions: dict[str, tuple[float, float]],
+        sizes: dict[str, tuple[float, float]],
     ) -> None: ...
 
     def replace_context_edges(

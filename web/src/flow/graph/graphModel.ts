@@ -1,8 +1,12 @@
 import { type Edge } from "@xyflow/react";
 import {
+  CHAT_MAX_HEIGHT,
+  CHAT_MAX_WIDTH,
   CHAT_FOOTER_PADDING,
   CHAT_HEADER_HEIGHT,
   CHAT_MIN_HEIGHT,
+  CHAT_MIN_WIDTH,
+  CHAT_WIDTH,
   CHAT_PADDING,
   MESSAGE_GAP_Y,
   estimateChatInputHeight,
@@ -20,8 +24,31 @@ export function buildChatPositions(nodes: AppNode[]): Record<string, { x: number
   return chatPositions;
 }
 
+export function buildChatSizes(nodes: AppNode[]): Record<string, { width: number; height: number }> {
+  const chatSizes: Record<string, { width: number; height: number }> = {};
+  for (const n of nodes) {
+    if (n.type !== "chat") continue;
+    if (n.data.isSizeManual !== true) continue;
+    const width = typeof n.style?.width === "number" ? n.style.width : CHAT_WIDTH;
+    const height = typeof n.style?.height === "number" ? n.style.height : CHAT_MIN_HEIGHT;
+    chatSizes[n.id] = {
+      width: Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, width)),
+      height: Math.max(CHAT_MIN_HEIGHT, Math.min(CHAT_MAX_HEIGHT, height)),
+    };
+  }
+  return chatSizes;
+}
+
 export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
   const messagesByChat = new Map<string, MessageFlowNode[]>();
+  const chatWidthById = new Map<string, number>();
+
+  for (const n of nodes) {
+    if (n.type !== "chat") continue;
+    const width = typeof n.style?.width === "number" ? n.style.width : CHAT_WIDTH;
+    chatWidthById.set(n.id, Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, width)));
+  }
+
   for (const n of nodes) {
     if (n.type !== "message") continue;
     if (!n.parentId) continue;
@@ -36,11 +63,16 @@ export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
   for (const [chatId, msgs] of messagesByChat.entries()) {
     const sorted = msgs.slice().sort((a, b) => a.data.ordinal - b.data.ordinal);
     const baseY = CHAT_HEADER_HEIGHT + CHAT_PADDING;
+    const chatWidth = chatWidthById.get(chatId) ?? CHAT_WIDTH;
     let offsetY = 0;
 
     sorted.forEach((m) => {
-      const estimatedHeight = estimateMessageHeight({ text: m.data.text, role: m.data.role });
-      const x = getMessagePosition({ indexInChat: 0, role: m.data.role }).x;
+      const estimatedHeight = estimateMessageHeight({
+        text: m.data.text,
+        role: m.data.role,
+        chatWidth,
+      });
+      const x = getMessagePosition({ indexInChat: 0, role: m.data.role, chatWidth }).x;
       messageLayout.set(m.id, {
         position: { x, y: baseY + offsetY },
       });
@@ -59,12 +91,21 @@ export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
     }
 
     if (n.type === "chat") {
-      const inputHeight = estimateChatInputHeight(n.data.draft);
+      const isSizeManual = n.data.isSizeManual === true;
+      const existingWidth = typeof n.style?.width === "number" ? n.style.width : CHAT_WIDTH;
+      const normalizedWidth = Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, existingWidth));
+      const inputHeight = estimateChatInputHeight(n.data.draft, normalizedWidth);
       const messageContentBottom = messageBottomByChat.get(n.id) ?? CHAT_HEADER_HEIGHT + CHAT_PADDING;
       const contentDrivenHeight = messageContentBottom + CHAT_FOOTER_PADDING + inputHeight;
+      const existingHeight =
+        typeof n.style?.height === "number" ? n.style.height : Math.max(CHAT_MIN_HEIGHT, contentDrivenHeight);
+      const nextHeight = isSizeManual
+        ? Math.max(CHAT_MIN_HEIGHT, Math.min(CHAT_MAX_HEIGHT, existingHeight))
+        : Math.max(CHAT_MIN_HEIGHT, Math.min(CHAT_MAX_HEIGHT, contentDrivenHeight));
       const style = {
         ...(typeof n.style === "object" ? n.style : {}),
-        height: Math.max(CHAT_MIN_HEIGHT, contentDrivenHeight),
+        width: isSizeManual ? normalizedWidth : CHAT_WIDTH,
+        height: nextHeight,
       };
       return { ...n, style };
     }

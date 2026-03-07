@@ -1,13 +1,14 @@
 import type { Edge } from "@xyflow/react";
 import { apiFetch } from "../../lib/api";
 import type { AppNode } from "../types";
-import { buildChatPositions, buildContextEdgesForSave } from "./graphModel";
+import { buildChatPositions, buildChatSizes, buildContextEdgesForSave } from "./graphModel";
 
 export type GraphChatDTO = {
   id: string;
   workspaceId: string;
   title: string;
   position: { x: number; y: number };
+  size?: { width: number; height: number } | null;
 };
 
 export type GraphMessageDTO = {
@@ -51,6 +52,7 @@ export async function saveGraphLayout(params: {
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       chatPositions: buildChatPositions(params.nodes),
+      chatSizes: buildChatSizes(params.nodes),
       contextEdges: buildContextEdgesForSave({
         nodes: params.nodes,
         edges: params.edges,

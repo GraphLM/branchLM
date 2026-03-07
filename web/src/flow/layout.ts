@@ -1,7 +1,10 @@
 import type { AppNode, ChatNode, MessageNode } from "./types";
 
 export const CHAT_WIDTH = 440;
+export const CHAT_MIN_WIDTH = 320;
+export const CHAT_MAX_WIDTH = 920;
 export const CHAT_MIN_HEIGHT = 360;
+export const CHAT_MAX_HEIGHT = 1080;
 export const CHAT_HEADER_HEIGHT = 46;
 export const CHAT_INPUT_HEIGHT = 66;
 export const CHAT_PADDING = 14;
@@ -16,15 +19,16 @@ const MESSAGE_TEXT_CHAR_WIDTH = 7.2;
 const INPUT_TEXT_LINE_HEIGHT = 20;
 const INPUT_TEXT_CHAR_WIDTH = 7.2;
 
-export function getMessageWidth(role: "user" | "app"): number {
-  return role === "user" ? MESSAGE_WIDTH : CHAT_WIDTH - CHAT_PADDING * 2;
+export function getMessageWidth(role: "user" | "app", chatWidth: number = CHAT_WIDTH): number {
+  return role === "user" ? MESSAGE_WIDTH : chatWidth - CHAT_PADDING * 2;
 }
 
 export function estimateMessageHeight(params: {
   text: string;
   role: "user" | "app";
+  chatWidth?: number;
 }): number {
-  const width = getMessageWidth(params.role);
+  const width = getMessageWidth(params.role, params.chatWidth);
   const horizontalPadding = params.role === "user" ? 16 : 0;
   const verticalPadding = 8;
   const minHeight = params.role === "user" ? 34 : 24;
@@ -38,11 +42,11 @@ export function estimateMessageHeight(params: {
   return Math.max(minHeight, lines * MESSAGE_TEXT_LINE_HEIGHT + verticalPadding);
 }
 
-export function estimateChatInputHeight(draft: string): number {
+export function estimateChatInputHeight(draft: string, chatWidth: number = CHAT_WIDTH): number {
   const minHeight = CHAT_INPUT_HEIGHT;
   const maxHeight = 176;
   const horizontalPadding = 72;
-  const contentWidth = Math.max(140, CHAT_WIDTH - CHAT_PADDING * 2 - horizontalPadding);
+  const contentWidth = Math.max(140, chatWidth - CHAT_PADDING * 2 - horizontalPadding);
   const charsPerLine = Math.max(10, Math.floor(contentWidth / INPUT_TEXT_CHAR_WIDTH));
   const lines = draft
     .split("\n")
@@ -54,12 +58,13 @@ export function estimateChatInputHeight(draft: string): number {
 export function getMessagePosition(params: {
   indexInChat: number;
   role: "user" | "app";
+  chatWidth?: number;
 }): { x: number; y: number } {
   const baseY = CHAT_HEADER_HEIGHT + CHAT_PADDING;
   const y = baseY + params.indexInChat * (MESSAGE_HEIGHT + MESSAGE_GAP_Y);
 
   const xLeft = CHAT_PADDING;
-  const xRight = CHAT_WIDTH - CHAT_PADDING - MESSAGE_WIDTH;
+  const xRight = (params.chatWidth ?? CHAT_WIDTH) - CHAT_PADDING - MESSAGE_WIDTH;
   const x = params.role === "user" ? xRight : xLeft;
 
   return { x, y };
@@ -112,13 +117,21 @@ export function createChatNode(params: {
   id: string;
   position: { x: number; y: number };
   title: string;
+  size?: { width: number; height: number };
 }): ChatNode {
+  const width = Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, params.size?.width ?? CHAT_WIDTH));
+  const height = Math.max(
+    CHAT_MIN_HEIGHT,
+    Math.min(CHAT_MAX_HEIGHT, params.size?.height ?? CHAT_MIN_HEIGHT),
+  );
+  const isSizeManual = params.size != null;
+
   return {
     id: params.id,
     type: "chat",
     position: params.position,
-    data: { title: params.title, draft: "" },
-    style: { width: CHAT_WIDTH, height: CHAT_MIN_HEIGHT },
+    data: { title: params.title, draft: "", isSizeManual },
+    style: { width, height },
     dragHandle: ".chat-drag-handle",
     zIndex: 0,
   };

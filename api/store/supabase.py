@@ -115,6 +115,16 @@ class SupabaseStore:
         )
 
     @staticmethod
+    def _is_missing_chat_size_columns_error(exc: HTTPException) -> bool:
+        detail = str(exc.detail).lower()
+        return (
+            (("pgrst204" in detail) and ("'width' column" in detail or "'height' column" in detail))
+            or ("42703" in detail and ("chats.width" in detail or "chats.height" in detail))
+            or ("column chats.width does not exist" in detail)
+            or ("column chats.height does not exist" in detail)
+        )
+
+    @staticmethod
     def _is_missing_context_snapshot_table_error(exc: HTTPException) -> bool:
         detail = str(exc.detail).lower()
         return (
@@ -161,44 +171,46 @@ class SupabaseStore:
         return len(rows) == 1
 
     def get_chat(self, user_id: str, workspace_id: str, chat_id: str) -> dict[str, Any] | None:
+        select_with_model_and_size = "id,workspace_id,title,position_x,position_y,model,width,height"
+        select_with_model = "id,workspace_id,title,position_x,position_y,model"
+        select_with_size = "id,workspace_id,title,position_x,position_y,width,height"
+        select_minimal = "id,workspace_id,title,position_x,position_y"
+
+        def _fetch(select_fields: str) -> list[dict[str, Any]]:
+            return (
+                self._wrap_postgrest(
+                    "select chat row",
+                    lambda: (
+                        self._client.table("chats")
+                        .select(select_fields)
+                        .eq("id", chat_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .limit(1)
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+
         try:
-            rows = (
-                self._wrap_postgrest(
-                    "select chat row",
-                    lambda: (
-                        self._client.table("chats")
-                        .select("id,workspace_id,title,position_x,position_y,model")
-                        .eq("id", chat_id)
-                        .eq("user_id", user_id)
-                        .eq("workspace_id", workspace_id)
-                        .limit(1)
-                        .execute()
-                        .data
-                        or []
-                    ),
-                )
-                or []
-            )
+            rows = _fetch(select_with_model_and_size)
         except HTTPException as exc:
-            if not self._is_missing_chat_model_column_error(exc):
+            missing_model = self._is_missing_chat_model_column_error(exc)
+            missing_size = self._is_missing_chat_size_columns_error(exc)
+            if not missing_model and not missing_size:
                 raise
-            rows = (
-                self._wrap_postgrest(
-                    "select chat row",
-                    lambda: (
-                        self._client.table("chats")
-                        .select("id,workspace_id,title,position_x,position_y")
-                        .eq("id", chat_id)
-                        .eq("user_id", user_id)
-                        .eq("workspace_id", workspace_id)
-                        .limit(1)
-                        .execute()
-                        .data
-                        or []
-                    ),
-                )
-                or []
+            select_fields = (
+                select_with_size if missing_model else select_with_model if missing_size else select_minimal
             )
+            try:
+                rows = _fetch(select_fields)
+            except HTTPException as fallback_exc:
+                if not self._is_missing_chat_model_column_error(fallback_exc) and not self._is_missing_chat_size_columns_error(fallback_exc):
+                    raise
+                rows = _fetch(select_minimal)
         return rows[0] if rows else None
 
     def list_workspaces(self, user_id: str) -> list[dict[str, Any]]:
@@ -273,42 +285,45 @@ class SupabaseStore:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
+        select_with_model_and_size = "id,title,position_x,position_y,width,height,workspace_id,model"
+        select_with_model = "id,title,position_x,position_y,workspace_id,model"
+        select_with_size = "id,title,position_x,position_y,width,height,workspace_id"
+        select_minimal = "id,title,position_x,position_y,workspace_id"
+
+        def _fetch(select_fields: str) -> list[dict[str, Any]]:
+            return (
+                self._wrap_postgrest(
+                    "select chats",
+                    lambda: (
+                        self._client.table("chats")
+                        .select(select_fields)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .order("created_at")
+                        .execute()
+                        .data
+                        or []
+                    ),
+                )
+                or []
+            )
+
         try:
-            return (
-                self._wrap_postgrest(
-                    "select chats",
-                    lambda: (
-                        self._client.table("chats")
-                        .select("id,title,position_x,position_y,workspace_id,model")
-                        .eq("user_id", user_id)
-                        .eq("workspace_id", workspace_id)
-                        .order("created_at")
-                        .execute()
-                        .data
-                        or []
-                    ),
-                )
-                or []
-            )
+            return _fetch(select_with_model_and_size)
         except HTTPException as exc:
-            if not self._is_missing_chat_model_column_error(exc):
+            missing_model = self._is_missing_chat_model_column_error(exc)
+            missing_size = self._is_missing_chat_size_columns_error(exc)
+            if not missing_model and not missing_size:
                 raise
-            return (
-                self._wrap_postgrest(
-                    "select chats",
-                    lambda: (
-                        self._client.table("chats")
-                        .select("id,title,position_x,position_y,workspace_id")
-                        .eq("user_id", user_id)
-                        .eq("workspace_id", workspace_id)
-                        .order("created_at")
-                        .execute()
-                        .data
-                        or []
-                    ),
-                )
-                or []
+            select_fields = (
+                select_with_size if missing_model else select_with_model if missing_size else select_minimal
             )
+            try:
+                return _fetch(select_fields)
+            except HTTPException as fallback_exc:
+                if not self._is_missing_chat_model_column_error(fallback_exc) and not self._is_missing_chat_size_columns_error(fallback_exc):
+                    raise
+                return _fetch(select_minimal)
 
     def list_messages(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
         chat_ids = self._workspace_chat_ids(user_id, workspace_id)
@@ -561,30 +576,62 @@ class SupabaseStore:
             ),
         )
 
-    def update_chat_positions(
+    def update_chat_layout(
         self,
         user_id: str,
         workspace_id: str,
         positions: dict[str, tuple[float, float]],
+        sizes: dict[str, tuple[float, float]],
     ) -> None:
         if not self.workspace_exists(user_id, workspace_id):
             raise HTTPException(status_code=404, detail="Workspace not found")
 
         now = datetime.now(timezone.utc).isoformat()
-        for chat_id, (x, y) in positions.items():
+        target_chat_ids = set(positions) | set(sizes)
+        for chat_id in target_chat_ids:
             if not self.chat_exists(user_id, workspace_id, chat_id):
                 continue
-            self._wrap_postgrest(
-                "update chat layout",
-                lambda chat_id=chat_id, x=x, y=y: (
-                    self._client.table("chats")
-                    .update({"position_x": x, "position_y": y, "updated_at": now})
-                    .eq("id", chat_id)
-                    .eq("user_id", user_id)
-                    .eq("workspace_id", workspace_id)
-                    .execute()
-                ),
-            )
+            payload: dict[str, Any] = {"updated_at": now}
+            if chat_id in positions:
+                x, y = positions[chat_id]
+                payload["position_x"] = x
+                payload["position_y"] = y
+            if chat_id in sizes:
+                width, height = sizes[chat_id]
+                payload["width"] = width
+                payload["height"] = height
+
+            try:
+                self._wrap_postgrest(
+                    "update chat layout",
+                    lambda chat_id=chat_id, payload=payload: (
+                        self._client.table("chats")
+                        .update(payload)
+                        .eq("id", chat_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .execute()
+                    ),
+                )
+            except HTTPException as exc:
+                if "width" not in payload and "height" not in payload:
+                    raise
+                if not self._is_missing_chat_size_columns_error(exc):
+                    raise
+                payload_without_size = {
+                    key: value for key, value in payload.items() if key not in {"width", "height"}
+                }
+                self._wrap_postgrest(
+                    "update chat layout",
+                    lambda chat_id=chat_id, payload_without_size=payload_without_size: (
+                        self._client.table("chats")
+                        .update(payload_without_size)
+                        .eq("id", chat_id)
+                        .eq("user_id", user_id)
+                        .eq("workspace_id", workspace_id)
+                        .execute()
+                    ),
+                )
 
     def replace_context_edges(
         self, user_id: str, workspace_id: str, edges: list[dict[str, Any]]

@@ -19,6 +19,11 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
                 "title": c["title"],
                 "model": c.get("model"),
                 "position": {"x": c["position_x"], "y": c["position_y"]},
+                "size": (
+                    {"width": c.get("width"), "height": c.get("height")}
+                    if c.get("width") is not None and c.get("height") is not None
+                    else None
+                ),
             }
             for c in chats
         ],
@@ -49,7 +54,10 @@ def put_graph_layout(
     positions: dict[str, tuple[float, float]] = {
         chat_id: (pos.x, pos.y) for chat_id, pos in body.chatPositions.items()
     }
-    store.update_chat_positions(user_id, workspace_id, positions)
+    sizes: dict[str, tuple[float, float]] = {
+        chat_id: (size.width, size.height) for chat_id, size in body.chatSizes.items()
+    }
+    store.update_chat_layout(user_id, workspace_id, positions, sizes)
 
     store.replace_context_edges(
         user_id,

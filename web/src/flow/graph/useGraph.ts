@@ -77,7 +77,9 @@ export function useGraph(params: {
 
         const nextNodes: AppNode[] = [];
         for (const c of data.chats ?? []) {
-          nextNodes.push(createChatNode({ id: c.id, position: c.position, title: c.title }));
+          nextNodes.push(
+            createChatNode({ id: c.id, position: c.position, title: c.title, size: c.size ?? undefined }),
+          );
         }
         for (const m of data.messages ?? []) {
           nextNodes.push(
