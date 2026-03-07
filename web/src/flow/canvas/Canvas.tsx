@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
@@ -23,6 +23,7 @@ import {
 } from '../connections/connectionsModel'
 import { computeChatPosition } from '../layout'
 import { Composer } from '../../ui/Composer'
+import { ChatPanel } from '../../ui/ChatPanel'
 import { useMessaging } from '../messaging/useMessaging'
 import { messagingApi } from '../messaging/messagingApi'
 import type { FlowNode } from '../types'
@@ -56,10 +57,22 @@ function CanvasInner() {
     updateChatPosition,
     deleteNodeById,
   } = useMessaging()
-  const { screenToFlowPosition } = useReactFlow()
+  const { getNode, screenToFlowPosition, setCenter } = useReactFlow()
   const [edges, setEdges] = useState<Edge[]>([])
   const [isLocked, setIsLocked] = useState(false)
+  const [isPanelOpen, setIsPanelOpen] = useState(false)
   const connectStartNodeIdRef = useRef<string | null>(null)
+
+  const chatsForPanel = useMemo(
+    () =>
+      nodes
+        .filter((node): node is Extract<FlowNode, { type: 'chat' }> => node.type === 'chat')
+        .map((chat) => ({
+          id: chat.id,
+          title: chat.data.title,
+        })),
+    [nodes],
+  )
 
   const handleNodesDelete = useCallback(
     (deletedNodes: Node[]) => {
@@ -184,8 +197,34 @@ function CanvasInner() {
     })
   }, [nodes, updateChatPosition])
 
+  const focusNodeInView = useCallback(
+    (nodeId: string) => {
+      const node = getNode(nodeId)
+      if (!node) {
+        return
+      }
+
+      const width = node.measured?.width ?? node.width ?? 0
+      const height = node.measured?.height ?? node.height ?? 0
+      const position = node.position
+
+      setCenter(position.x + width / 2, position.y + height / 2, {
+        zoom: 1.15,
+        duration: 350,
+      })
+    },
+    [getNode, setCenter],
+  )
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-[color:var(--color-text-primary)]">
+      <ChatPanel
+        chats={chatsForPanel}
+        onChatClick={focusNodeInView}
+        onClose={() => setIsPanelOpen(false)}
+        onOpen={() => setIsPanelOpen(true)}
+        open={isPanelOpen}
+      />
       <div className="h-full w-full">
         <ReactFlow
           className="h-full w-full"
