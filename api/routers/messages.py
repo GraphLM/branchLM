@@ -33,9 +33,13 @@ def generate_chat_reply(
     service = ChatGenerationService(
         store=store,
         llm_client=request.app.state.llm_client,
+        rate_limiter=request.app.state.rate_limiter,
         settings=request.app.state.settings,
     )
-    return service.generate_chat_reply(user_id=user_id, chat_id=chat_id, body=body)
+    client_host = request.client.host if request.client else "unknown"
+    return service.generate_chat_reply(
+        user_id=user_id, chat_id=chat_id, body=body, client_ip=client_host
+    )
 
 
 @router.delete("/api/messages/{message_id}")

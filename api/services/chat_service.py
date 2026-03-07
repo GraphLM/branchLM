@@ -6,6 +6,7 @@ from fastapi import HTTPException
 
 from schemas import CreateChatBody, CreateMessageBody, GenerateReplyBody, PatchChatBody
 from services.llm_service import LLMConfigurationError, LLMServiceError, OpenRouterClient
+from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
 from store.base import Store
 
@@ -38,14 +39,30 @@ class MessageService:
 
 
 class ChatGenerationService:
-    def __init__(self, *, store: Store, llm_client: OpenRouterClient, settings: Settings) -> None:
+    def __init__(
+        self,
+        *,
+        store: Store,
+        llm_client: OpenRouterClient,
+        rate_limiter: SlidingWindowRateLimiter,
+        settings: Settings,
+    ) -> None:
         self._store = store
         self._llm_client = llm_client
+        self._rate_limiter = rate_limiter
         self._settings = settings
 
-    def generate_chat_reply(self, *, user_id: str, chat_id: str, body: GenerateReplyBody) -> dict[str, Any]:
+    def generate_chat_reply(
+        self,
+        *,
+        user_id: str,
+        chat_id: str,
+        body: GenerateReplyBody,
+        client_ip: str,
+    ) -> dict[str, Any]:
         self._ensure_chat_exists(user_id=user_id, chat_id=chat_id)
         prompt = self._validate_prompt(body.text)
+        self._enforce_rate_limit(user_id=user_id, client_ip=client_ip)
         conversation = self._build_conversation(user_id=user_id, chat_id=chat_id, prompt=prompt)
         reply_text = self._call_llm(conversation)
 
@@ -83,6 +100,17 @@ class ChatGenerationService:
                 detail=f"Message text exceeds {self._settings.max_prompt_chars} characters",
             )
         return prompt
+
+    def _enforce_rate_limit(self, *, user_id: str, client_ip: str) -> None:
+        decision = self._rate_limiter.allow(f"{user_id}:{client_ip}")
+        if decision.allowed:
+            return
+
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded. Please retry shortly.",
+            headers={"Retry-After": str(decision.retry_after_seconds)},
+        )
 
     def _build_conversation(self, *, user_id: str, chat_id: str, prompt: str) -> list[dict[str, str]]:
         prior_messages = self._store.list_messages_for_chat(user_id, chat_id)
