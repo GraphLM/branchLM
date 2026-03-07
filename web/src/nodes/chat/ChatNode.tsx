@@ -17,6 +17,22 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
   const hasPendingSource = props.pendingSourceMessageId != null;
   const incomingConnections = useNodeConnections({ id, handleType: "target" });
   const hasTargetConnection = incomingConnections.length > 0;
+  const applyManualSize = (width: number, height: number) => {
+    setNodes((nodes) =>
+      nodes.map((node) => {
+        if (node.id !== id || node.type !== "chat") return node;
+        return {
+          ...node,
+          data: { ...node.data, isSizeManual: true },
+          style: {
+            ...(typeof node.style === "object" ? node.style : {}),
+            width,
+            height,
+          },
+        };
+      }),
+    );
+  };
 
   return (
     <>
@@ -28,21 +44,11 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
         maxHeight={CHAT_MAX_HEIGHT}
         handleClassName="chat-node-resize-handle"
         lineClassName="chat-node-resize-line"
+        onResize={(_event, params) => {
+          applyManualSize(params.width, params.height);
+        }}
         onResizeEnd={(_event, params) => {
-          setNodes((nodes) =>
-            nodes.map((node) => {
-              if (node.id !== id || node.type !== "chat") return node;
-              return {
-                ...node,
-                data: { ...node.data, isSizeManual: true },
-                style: {
-                  ...(typeof node.style === "object" ? node.style : {}),
-                  width: params.width,
-                  height: params.height,
-                },
-              };
-            }),
-          );
+          applyManualSize(params.width, params.height);
         }}
       />
       <ChatCard

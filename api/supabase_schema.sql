@@ -26,8 +26,8 @@ create table if not exists public.chats (
   model text null,
   position_x double precision not null default 0,
   position_y double precision not null default 0,
-  width double precision null,
-  height double precision null,
+  width double precision null default 440,
+  height double precision null default 360,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

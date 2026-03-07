@@ -92,13 +92,22 @@ export function applyAutoLayout(nodes: AppNode[]): AppNode[] {
 
     if (n.type === "chat") {
       const isSizeManual = n.data.isSizeManual === true;
-      const existingWidth = typeof n.style?.width === "number" ? n.style.width : CHAT_WIDTH;
+      const existingWidth =
+        typeof n.width === "number"
+          ? n.width
+          : typeof n.style?.width === "number"
+            ? n.style.width
+            : CHAT_WIDTH;
       const normalizedWidth = Math.max(CHAT_MIN_WIDTH, Math.min(CHAT_MAX_WIDTH, existingWidth));
       const inputHeight = estimateChatInputHeight(n.data.draft, normalizedWidth);
       const messageContentBottom = messageBottomByChat.get(n.id) ?? CHAT_HEADER_HEIGHT + CHAT_PADDING;
       const contentDrivenHeight = messageContentBottom + CHAT_FOOTER_PADDING + inputHeight;
       const existingHeight =
-        typeof n.style?.height === "number" ? n.style.height : Math.max(CHAT_MIN_HEIGHT, contentDrivenHeight);
+        typeof n.height === "number"
+          ? n.height
+          : typeof n.style?.height === "number"
+            ? n.style.height
+            : Math.max(CHAT_MIN_HEIGHT, contentDrivenHeight);
       const nextHeight = isSizeManual
         ? Math.max(CHAT_MIN_HEIGHT, Math.min(CHAT_MAX_HEIGHT, existingHeight))
         : Math.max(CHAT_MIN_HEIGHT, Math.min(CHAT_MAX_HEIGHT, contentDrivenHeight));

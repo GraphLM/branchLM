@@ -438,6 +438,8 @@ class SupabaseStore:
             "title": title,
             "position_x": position_x,
             "position_y": position_y,
+            "width": 440.0,
+            "height": 360.0,
         }
         if model:
             payload["model"] = model
@@ -448,9 +450,15 @@ class SupabaseStore:
                 lambda: self._client.table("chats").insert(payload).execute().data,
             )
         except HTTPException as exc:
-            if not (model and self._is_missing_chat_model_column_error(exc)):
+            missing_model = model and self._is_missing_chat_model_column_error(exc)
+            missing_size = self._is_missing_chat_size_columns_error(exc)
+            if not missing_model and not missing_size:
                 raise
-            payload.pop("model", None)
+            if missing_model:
+                payload.pop("model", None)
+            if missing_size:
+                payload.pop("width", None)
+                payload.pop("height", None)
             created = self._wrap_postgrest(
                 "insert chat",
                 lambda: self._client.table("chats").insert(payload).execute().data,

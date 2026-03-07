@@ -258,6 +258,18 @@ def test_graph_layout_persists_chat_size() -> None:
     assert chat["size"] == {"width": 620, "height": 540}
 
 
+def test_graph_omits_default_chat_size_for_new_chat() -> None:
+    client = TestClient(create_app())
+
+    workspace_id = _create_workspace(client, "Workspace")
+    chat_id = _create_chat(client, workspace_id, "New chat")
+
+    graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    assert graph_resp.status_code == 200
+    chat = next(c for c in graph_resp.json()["chats"] if c["id"] == chat_id)
+    assert chat["size"] is None
+
+
 def test_context_splicing_from_user_message_excludes_the_target_user_message() -> None:
     app = create_app()
     app.state.settings = replace(

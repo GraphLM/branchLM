@@ -5,6 +5,9 @@ from typing import Any
 from schemas import GraphLayoutPutBody
 from store.base import Store
 
+CHAT_DEFAULT_WIDTH = 440.0
+CHAT_DEFAULT_HEIGHT = 360.0
+
 
 def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any]:
     chats = store.list_chats(user_id, workspace_id)
@@ -21,7 +24,14 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
                 "position": {"x": c["position_x"], "y": c["position_y"]},
                 "size": (
                     {"width": c.get("width"), "height": c.get("height")}
-                    if c.get("width") is not None and c.get("height") is not None
+                    if (
+                        c.get("width") is not None
+                        and c.get("height") is not None
+                        and (
+                            c.get("width") != CHAT_DEFAULT_WIDTH
+                            or c.get("height") != CHAT_DEFAULT_HEIGHT
+                        )
+                    )
                     else None
                 ),
             }
