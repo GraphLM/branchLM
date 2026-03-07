@@ -28,6 +28,8 @@ type JwtPayload = {
   exp?: number;
 };
 
+let refreshInFlight: Promise<AuthSession | null> | null = null;
+
 function getSupabaseAuthConfig(): { supabaseUrl: string; supabaseAnonKey: string } {
   const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
   const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
@@ -153,6 +155,72 @@ export function getStoredSession(): AuthSession | null {
     localStorage.removeItem(AUTH_STORAGE_KEY);
     return null;
   }
+}
+
+function shouldRefreshSession(session: AuthSession): boolean {
+  if (!session.expiresAt) return false;
+  // Refresh slightly before expiry to avoid race conditions around request timing.
+  return Date.now() >= session.expiresAt - 30_000;
+}
+
+function mapAuthResponseToSession(data: VerifyOtpResponse): AuthSession | null {
+  if (!data.access_token || !data.user?.id) return null;
+  return {
+    accessToken: data.access_token,
+    refreshToken: data.refresh_token ?? null,
+    expiresAt: data.expires_in ? Date.now() + data.expires_in * 1000 : null,
+    user: {
+      id: data.user.id,
+      email: data.user.email ?? null,
+    },
+  };
+}
+
+async function refreshSession(session: AuthSession): Promise<AuthSession | null> {
+  if (!session.refreshToken) {
+    clearSession();
+    return null;
+  }
+
+  const res = await authRequest(`token?grant_type=refresh_token`, {
+    method: "POST",
+    body: JSON.stringify({
+      refresh_token: session.refreshToken,
+    }),
+  });
+
+  if (!res.ok) {
+    clearSession();
+    return null;
+  }
+
+  const data = (await res.json()) as VerifyOtpResponse;
+  const refreshed = mapAuthResponseToSession(data);
+  if (!refreshed) {
+    clearSession();
+    return null;
+  }
+
+  persistSession(refreshed);
+  return refreshed;
+}
+
+export async function getValidSession(options?: { forceRefresh?: boolean }): Promise<AuthSession | null> {
+  const session = getStoredSession();
+  if (!session) return null;
+  if (isDevAuthBypassEnabled()) return session;
+
+  const forceRefresh = options?.forceRefresh ?? false;
+  if (!forceRefresh && !shouldRefreshSession(session)) {
+    return session;
+  }
+
+  if (!refreshInFlight) {
+    refreshInFlight = refreshSession(session).finally(() => {
+      refreshInFlight = null;
+    });
+  }
+  return refreshInFlight;
 }
 
 export function clearSession(): void {
