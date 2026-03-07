@@ -23,6 +23,7 @@ import {
 } from '../connections/connectionsModel'
 import { Composer } from '../../ui/Composer'
 import { useMessaging } from '../messaging/useMessaging'
+import { messagingApi } from '../messaging/messagingApi'
 
 function getClientPointFromEvent(
   event: MouseEvent | TouchEvent,
@@ -139,6 +140,16 @@ function CanvasInner() {
       return filtered.length === prev.length ? prev : filtered
     })
   }, [nodes])
+
+  useEffect(() => {
+    const timerId = window.setTimeout(() => {
+      void messagingApi.saveGraphLayout({ nodes, edges })
+    }, 500)
+
+    return () => {
+      window.clearTimeout(timerId)
+    }
+  }, [nodes, edges])
 
   const handleNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {

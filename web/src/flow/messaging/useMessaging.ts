@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { type OnNodesChange, type XYPosition } from '@xyflow/react'
 
 import {
@@ -45,6 +45,28 @@ export function useMessaging(): UseMessagingReturn {
   const [messages, setMessages] = useState<MessageRecord[]>([])
   const [composerText, setComposerText] = useState('')
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+
+    void (async () => {
+      const graph = await messagingApi.fetchGraph()
+      if (cancelled) {
+        return
+      }
+
+      if (graph.chats.length === 0 && graph.messages.length === 0) {
+        return
+      }
+
+      setChats(graph.chats)
+      setMessages(graph.messages)
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const updateChatTitle = useCallback((chatId: string, title: string) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, title } : chat)))
