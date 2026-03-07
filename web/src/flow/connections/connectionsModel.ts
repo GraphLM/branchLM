@@ -1,15 +1,37 @@
-import { MarkerType, type Edge } from '@xyflow/react'
+import { MarkerType, type Edge, type Connection } from "@xyflow/react";
+import type { AppNode } from "../types";
 
-import type { FlowNode } from '../types'
+export type UseConnectionsParams = {
+  nodes: AppNode[];
+  setNodes: React.Dispatch<React.SetStateAction<AppNode[]>>;
+  setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;
+  screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number };
+};
 
 export function buildContextEdgeId(sourceId: string, targetId: string): string {
-  return `ctx:${sourceId}->${targetId}`
+  return `ctx:${sourceId}->${targetId}`;
 }
 
-export function createContextEdge(params: {
-  sourceId: string
-  targetId: string
-}): Edge {
+export function isMessageToChatConnection(params: {
+  sourceId: string;
+  targetId: string;
+  nodes: AppNode[];
+}): boolean {
+  const sourceNode = params.nodes.find((n) => n.id === params.sourceId);
+  const targetNode = params.nodes.find((n) => n.id === params.targetId);
+  return sourceNode?.type === "message" && targetNode?.type === "chat";
+}
+
+export function createContextEdgeFromConnection(connection: Connection): Edge {
+  return {
+    ...connection,
+    id: buildContextEdgeId(connection.source!, connection.target!),
+    markerEnd: { type: MarkerType.ArrowClosed },
+    animated: false,
+  };
+}
+
+export function createContextEdge(params: { sourceId: string; targetId: string }): Edge {
   return {
     id: buildContextEdgeId(params.sourceId, params.targetId),
     source: params.sourceId,
@@ -18,15 +40,5 @@ export function createContextEdge(params: {
     targetHandle: null,
     markerEnd: { type: MarkerType.ArrowClosed },
     animated: false,
-  }
-}
-
-export function isMessageToChatConnection(params: {
-  sourceId: string
-  targetId: string
-  nodes: FlowNode[]
-}): boolean {
-  const sourceNode = params.nodes.find((node) => node.id === params.sourceId)
-  const targetNode = params.nodes.find((node) => node.id === params.targetId)
-  return sourceNode?.type === 'message' && targetNode?.type === 'chat'
+  };
 }

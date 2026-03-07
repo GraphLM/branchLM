@@ -1,24 +1,51 @@
-import { Handle, Position, type NodeProps } from '@xyflow/react'
+import { Handle, Position, type NodeProps } from "@xyflow/react";
+import type { MessageNode } from "../../flow/types";
+import { useFlowActions } from "../../flow/actionsContext";
+import MessageBubble from "./MessageBubble";
 
-import type { MessageFlowNode } from '../../flow/types'
-import { MessageBubble } from './MessageBubble'
+type ExtraProps = {
+  pendingSourceMessageId?: string | null;
+  onMessageSourceHandleActivate?: (messageId: string) => void;
+};
 
-export function MessageNode(props: NodeProps<MessageFlowNode>) {
-  const { data } = props
+export default function MessageNodeComponent(
+  props: NodeProps<MessageNode> & ExtraProps,
+) {
+  const { id, data, selected } = props;
+  const actions = useFlowActions();
+  const isPendingSource = props.pendingSourceMessageId === id;
 
   return (
     <MessageBubble
-      onDelete={() => data.onDeleteMessage(data.messageId)}
       role={data.role}
+      text={data.text}
+      selected={selected}
+      onDelete={() => actions.deleteMessage(id)}
       sourceHandle={
         <Handle
-          className="rf-handle-connect rf-handle-connect--source !h-3.5 !w-3.5 !border-[color:var(--color-message-user-border)] !bg-[color:var(--color-canvas-base)]"
-          position={Position.Right}
-          style={{ top: '50%' }}
           type="source"
+          position={Position.Right}
+          className={[
+            "rf-handle-connect rf-handle-connect--source bg-(--handle-bg)! border-(--handle-border)! cursor-pointer",
+            isPendingSource
+              ? "rf-handle-connect--active ring-2 ring-(--selection-ring) border-(--selection-border)!"
+              : "",
+          ].join(" ")}
+          tabIndex={0}
+          title="Click, then click a chat to connect"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            props.onMessageSourceHandleActivate?.(id);
+          }}
+          onKeyDown={(e) => {
+            if (e.key !== "Enter" && e.key !== " ") return;
+            e.preventDefault();
+            e.stopPropagation();
+            props.onMessageSourceHandleActivate?.(id);
+          }}
         />
       }
-      text={data.text}
     />
-  )
+  );
 }

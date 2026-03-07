@@ -1,71 +1,74 @@
-import { Panel, useReactFlow } from '@xyflow/react'
-import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from 'lucide-react'
-import { composeButtonClass } from '../../ui/buttonStyles'
+import { Panel, useReactFlow } from "@xyflow/react";
+import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from "lucide-react";
 
-type CanvasToolbarProps = {
-  locked: boolean
-  onLockToggle: () => void
-  onAutoLayout: () => void
-}
+type Props = {
+  onAutoLayout: () => void;
+  locked: boolean;
+  onLockToggle: () => void;
+};
 
-const buttonClassName = composeButtonClass({ variant: 'primary', size: 'icon' })
+const buttonBase =
+  "group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)";
 
-export function CanvasToolbar({ locked, onLockToggle, onAutoLayout }: CanvasToolbarProps) {
-  const { zoomIn, zoomOut, fitView } = useReactFlow()
+export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Props) {
+  const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   return (
-    <Panel className="mb-4 ml-4 z-30" position="bottom-left">
+    <Panel position="bottom-left" className="mb-4 ml-4">
       <div
-        className="pointer-events-auto flex flex-col gap-2 rounded-2xl border border-[color:var(--color-panel-border)] bg-[color:var(--color-panel)]/75 p-2 backdrop-blur-sm"
-        onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
+        className="flex flex-col gap-1"
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <button
+          type="button"
+          className={buttonBase}
           aria-label="Zoom in"
-          className={`${buttonClassName} cursor-pointer`}
-          onClick={() => zoomIn({ duration: 180 })}
           title="Zoom in"
-          type="button"
+          onClick={() => zoomIn({ duration: 200 })}
         >
-          <Plus className="h-4 w-4" />
+          <Plus size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
         <button
+          type="button"
+          className={buttonBase}
           aria-label="Zoom out"
-          className={`${buttonClassName} cursor-pointer`}
-          onClick={() => zoomOut({ duration: 180 })}
           title="Zoom out"
-          type="button"
+          onClick={() => zoomOut({ duration: 200 })}
         >
-          <Minus className="h-4 w-4" />
+          <Minus size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
         <button
+          type="button"
+          className={buttonBase}
           aria-label="Center view"
-          className={`${buttonClassName} cursor-pointer`}
-          onClick={() => fitView({ duration: 220, padding: 0.2 })}
           title="Center view"
-          type="button"
+          onClick={() => fitView({ duration: 200, padding: 0.2 })}
         >
-          <Maximize2 className="h-4 w-4" />
+          <Maximize2 size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
         <button
+          type="button"
+          className={buttonBase}
           aria-label="Auto layout"
-          className={`${buttonClassName} cursor-pointer`}
-          onClick={onAutoLayout}
           title="Auto layout"
-          type="button"
+          onClick={onAutoLayout}
         >
-          <LayoutGrid className="h-4 w-4" />
+          <LayoutGrid size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
         <button
-          aria-label={locked ? 'Unlock canvas' : 'Lock canvas'}
-          className={`${buttonClassName} cursor-pointer`}
-          onClick={onLockToggle}
-          title={locked ? 'Unlock canvas' : 'Lock canvas'}
           type="button"
+          className={buttonBase}
+          aria-label={locked ? "Unlock canvas" : "Lock canvas"}
+          title={locked ? "Unlock canvas" : "Lock canvas"}
+          onClick={onLockToggle}
         >
-          {locked ? <Lock className="h-4 w-4" /> : <LockOpen className="h-4 w-4" />}
+          {locked ? (
+            <Lock size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+          ) : (
+            <LockOpen size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+          )}
         </button>
       </div>
     </Panel>
-  )
+  );
 }

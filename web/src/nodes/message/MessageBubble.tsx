@@ -1,30 +1,37 @@
-import type { ReactNode } from 'react'
+import type { ReactNode } from "react";
+import { MESSAGE_WIDTH } from "../../flow/layout";
+import NodeDeleteButton from "../../ui/NodeDeleteButton";
 
-import { NodeDeleteButton } from '../../ui/NodeDeleteButton'
+type Props = {
+  role: "user" | "app";
+  text: string;
+  selected: boolean;
+  sourceHandle?: ReactNode;
+  onDelete(): void;
+};
 
-type MessageBubbleProps = {
-  text: string
-  role: 'user' | 'app'
-  onDelete: () => void
-  sourceHandle?: ReactNode
-}
-
-export function MessageBubble({ text, role, onDelete, sourceHandle }: MessageBubbleProps) {
-  const containerClass =
-    role === 'user'
-      ? 'border-[color:var(--color-message-user-border)] bg-[color:var(--color-message-user)]'
-      : 'border-[color:var(--color-message-app-border)] bg-[color:var(--color-message-app)]'
+export default function MessageBubble(props: Props) {
+  const { role, text, selected, sourceHandle, onDelete } = props;
+  const isUser = role === "user";
 
   return (
     <div
-      className={`relative grid grid-cols-[auto_1fr_auto] items-center gap-2 rounded-xl border px-3 py-2 ${containerClass}`}
+      className={[
+        "group flex flex-row items-center justify-between relative rounded-md border py-1 px-2 elev-1 text-sm",
+        isUser
+          ? "bg-(--msg-user-bg) border-(--msg-user-border) text-(--msg-fg)"
+          : "bg-(--msg-app-bg) border-(--msg-app-border) text-(--msg-fg)",
+        selected ? "ring-2 ring-(--selection-ring)" : "",
+      ].join(" ")}
+      style={{ width: MESSAGE_WIDTH }}
     >
-      <div className="text-[11px] font-semibold uppercase tracking-[0.08em] text-[color:var(--color-text-secondary)]">
-        {role === 'user' ? 'You' : 'App'}
+      <p className="flex-1 whitespace-pre-wrap leading-snug flex items-center">
+        {text}
+      </p>
+      <div className="flex items-center">
+        <NodeDeleteButton title="Delete message" onClick={onDelete} />
       </div>
-      <div className="truncate text-sm text-[color:var(--color-text-primary)]">{text}</div>
-      <NodeDeleteButton className="justify-self-end" label="Delete" onClick={onDelete} />
       {sourceHandle}
     </div>
-  )
+  );
 }

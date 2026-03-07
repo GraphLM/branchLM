@@ -1,25 +1,29 @@
-import type { ButtonHTMLAttributes } from 'react'
-import { Trash2 } from 'lucide-react'
-import { composeButtonClass } from './buttonStyles'
+import { Trash2 } from "lucide-react";
 
-type NodeDeleteButtonProps = {
-  label?: string
-  showIcon?: boolean
-} & ButtonHTMLAttributes<HTMLButtonElement>
+type Props = {
+  onClick(): void;
+  title?: string;
+};
 
-export function NodeDeleteButton({ label = 'Delete', showIcon = true, ...props }: NodeDeleteButtonProps) {
+export default function NodeDeleteButton({ onClick, title = "Delete" }: Props) {
   return (
     <button
-      {...props}
-      aria-label={label}
-      className={composeButtonClass({
-        variant: 'primary',
-        size: 'icon',
-        className: props.className,
-      })}
       type="button"
+      className="relative rounded-md border border-transparent bg-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
+      title={title}
+      aria-label={title}
+      onMouseDown={(e) => {
+        e.stopPropagation();
+      }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
     >
-      {showIcon ? <Trash2 size={13} strokeWidth={2.1} /> : null}
+      <Trash2
+        size={14}
+        className="text-(--panel-muted) group-hover:text-(--panel-fg)"
+      />
     </button>
-  )
+  );
 }

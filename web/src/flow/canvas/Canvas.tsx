@@ -1,305 +1,100 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  Background,
-  BackgroundVariant,
-  ReactFlow,
-  ReactFlowProvider,
-  addEdge,
-  type Connection,
-  type Edge,
-  type Node,
-  type OnNodeDrag,
-  type OnConnect,
-  type OnConnectEnd,
-  type OnConnectStart,
-  useReactFlow,
-} from '@xyflow/react'
+import { Background, BackgroundVariant, MarkerType, Panel as FlowPanel, ReactFlow } from "@xyflow/react";
+import { LogOut } from "lucide-react";
+import "@xyflow/react/dist/style.css";
+import Composer from "../../ui/Composer";
+import Panel from "../../ui/Panel";
+import { FlowActionsProvider } from "../actionsContext";
+import CanvasToolbar from "./CanvasToolbar";
+import { useCanvas } from "./useCanvas";
 
-import { nodeTypes } from '../../nodes/nodeRegistry'
-import {
-  buildContextEdgeId,
-  createContextEdge,
-  isMessageToChatConnection,
-} from '../connections/connectionsModel'
-import { computeChatPosition } from '../layout'
-import { Composer } from '../../ui/Composer'
-import { ChatPanel } from '../../ui/ChatPanel'
-import { useMessaging } from '../messaging/useMessaging'
-import type { FlowNode } from '../types'
-import { CanvasToolbar } from './CanvasToolbar'
+type Props = {
+  onLogout: () => void;
+};
 
-function getClientPointFromEvent(
-  event: MouseEvent | TouchEvent,
-): { x: number; y: number } {
-  if ('touches' in event && event.touches.length > 0) {
-    return { x: event.touches[0].clientX, y: event.touches[0].clientY }
-  }
-  if ('changedTouches' in event && event.changedTouches.length > 0) {
-    return {
-      x: event.changedTouches[0].clientX,
-      y: event.changedTouches[0].clientY,
-    }
-  }
-  const mouseEvent = event as MouseEvent
-  return { x: mouseEvent.clientX, y: mouseEvent.clientY }
-}
-
-function CanvasInner() {
-  const {
-    nodes,
-    initialEdges,
-    composerText,
-    isSubmitting,
-    setComposerText,
-    createChatFromComposer,
-    createBranchChatFromMessage,
-    onNodesChange,
-    updateChatPosition,
-    syncContextEdges,
-    deleteNodeById,
-  } = useMessaging()
-  const { getNode, screenToFlowPosition, setCenter } = useReactFlow()
-  const [edges, setEdges] = useState<Edge[]>([])
-  const [isLocked, setIsLocked] = useState(false)
-  const [isPanelOpen, setIsPanelOpen] = useState(false)
-  const connectStartNodeIdRef = useRef<string | null>(null)
-
-  const chatsForPanel = useMemo(
-    () =>
-      nodes
-        .filter((node): node is Extract<FlowNode, { type: 'chat' }> => node.type === 'chat')
-        .map((chat) => ({
-          id: chat.id,
-          title: chat.data.title,
-        })),
-    [nodes],
-  )
-  useEffect(() => {
-    setEdges(initialEdges)
-  }, [initialEdges])
-
-  const handleNodesDelete = useCallback(
-    (deletedNodes: Node[]) => {
-      const deletedNodeIds = new Set(deletedNodes.map((node) => node.id))
-      setEdges((prev) => {
-        const nextEdges = prev.filter(
-          (edge) => !deletedNodeIds.has(edge.source) && !deletedNodeIds.has(edge.target),
-        )
-        syncContextEdges(nextEdges)
-        return nextEdges
-      })
-
-      for (const node of deletedNodes) {
-        void deleteNodeById(node.id)
-      }
-    },
-    [deleteNodeById, syncContextEdges],
-  )
-
-  const handleConnect: OnConnect = useCallback(
-    (connection: Connection) => {
-      if (isLocked) {
-        return
-      }
-
-      if (!connection.source || !connection.target) {
-        return
-      }
-
-      if (
-        !isMessageToChatConnection({
-          sourceId: connection.source,
-          targetId: connection.target,
-          nodes,
-        })
-      ) {
-        return
-      }
-
-      const edgeId = buildContextEdgeId(connection.source, connection.target)
-      setEdges((prev) => {
-        if (prev.some((edge) => edge.id === edgeId)) {
-          return prev
-        }
-
-        const nextEdges = addEdge(
-          createContextEdge({ sourceId: connection.source!, targetId: connection.target! }),
-          prev,
-        )
-        syncContextEdges(nextEdges)
-        return nextEdges
-      })
-    },
-    [isLocked, nodes, syncContextEdges],
-  )
-
-  const handleConnectStart: OnConnectStart = useCallback((_event, nodeHandle) => {
-    if (isLocked) {
-      return
-    }
-
-    connectStartNodeIdRef.current = nodeHandle.nodeId
-  }, [isLocked])
-
-  const handleConnectEnd: OnConnectEnd = useCallback(
-    async (event, connectionState) => {
-      const fromNodeId = connectStartNodeIdRef.current
-      connectStartNodeIdRef.current = null
-
-      if (isLocked || !fromNodeId || connectionState.isValid === true) {
-        return
-      }
-
-      const fromNode = nodes.find((node) => node.id === fromNodeId)
-      if (!fromNode || fromNode.type !== 'message') {
-        return
-      }
-
-      const nextChatId = await createBranchChatFromMessage({
-        sourceMessageId: fromNodeId,
-        position: screenToFlowPosition(getClientPointFromEvent(event)),
-      })
-
-      if (!nextChatId) {
-        return
-      }
-
-      setEdges((prev) => {
-        const nextEdges = addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev)
-        syncContextEdges(nextEdges)
-        return nextEdges
-      })
-    },
-    [createBranchChatFromMessage, isLocked, nodes, screenToFlowPosition, syncContextEdges],
-  )
-
-  useEffect(() => {
-    const availableNodeIds = new Set(nodes.map((node) => node.id))
-    setEdges((prev) => {
-      const filtered = prev.filter(
-        (edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target),
-      )
-      if (filtered.length !== prev.length) {
-        syncContextEdges(filtered)
-      }
-      return filtered.length === prev.length ? prev : filtered
-    })
-  }, [nodes, syncContextEdges])
-
-  const handleNodeDragStop: OnNodeDrag = useCallback(
-    (_event, node) => {
-      if (node.type !== 'chat') {
-        return
-      }
-
-      updateChatPosition(node.id, node.position)
-    },
-    [updateChatPosition],
-  )
-
-  const handleAutoLayout = useCallback(() => {
-    const chats = nodes
-      .filter((node): node is Extract<FlowNode, { type: 'chat' }> => node.type === 'chat')
-      .sort((a, b) => (a.position.x === b.position.x ? a.position.y - b.position.y : a.position.x - b.position.x))
-
-    chats.forEach((chat, index) => {
-      updateChatPosition(chat.id, computeChatPosition(index))
-    })
-  }, [nodes, updateChatPosition])
-
-  const focusNodeInView = useCallback(
-    (nodeId: string) => {
-      const node = getNode(nodeId)
-      if (!node) {
-        return
-      }
-
-      const width = node.measured?.width ?? node.width ?? 0
-      const height = node.measured?.height ?? node.height ?? 0
-      const position = node.position
-
-      setCenter(position.x + width / 2, position.y + height / 2, {
-        zoom: 1.15,
-        duration: 350,
-      })
-    },
-    [getNode, setCenter],
-  )
+export default function Canvas({ onLogout }: Props) {
+  const canvas = useCanvas();
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-(--color-text-primary)">
-      <ChatPanel
-        chats={chatsForPanel}
-        onChatClick={focusNodeInView}
-        onClose={() => setIsPanelOpen(false)}
-        onOpen={() => setIsPanelOpen(true)}
-        open={isPanelOpen}
-      />
-      <div className="h-full w-full">
+    <div className="w-screen h-screen">
+      <FlowActionsProvider value={canvas.actions}>
+        {canvas.chatsForPanel.length === 0 ? (
+          <div className="pointer-events-none fixed inset-0 z-10 flex items-center justify-center px-4">
+            <div className="max-w-sm rounded-md border border-(--panel-border) bg-(--panel-bg) elev-2 p-4 text-center backdrop-blur">
+              <p className="text-sm text-(--panel-fg)">No chats yet</p>
+              <p className="mt-1 text-xs text-(--panel-muted)">
+                Start by sending a message from the composer below.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
+        <Panel
+          open={canvas.panelOpen}
+          chats={canvas.chatsForPanel}
+          onOpen={canvas.onPanelOpen}
+          onClose={canvas.onPanelClose}
+          onNodeHover={canvas.onPanelNodeHover}
+          onNodeHoverEnd={canvas.onPanelNodeHoverEnd}
+          onNodeClick={canvas.onPanelNodeClick}
+        />
+
         <ReactFlow
-          className="h-full w-full"
-          defaultEdgeOptions={{
-            style: { stroke: 'var(--color-text-secondary)' },
-          }}
-          deleteKeyCode={['Backspace', 'Delete']}
-          edges={edges}
+          nodes={canvas.nodes}
+          edges={canvas.renderedEdges}
+          onNodesChange={canvas.onNodesChange}
+          onEdgesChange={canvas.onEdgesChange}
+          onConnect={canvas.onConnect}
+          onConnectStart={canvas.onConnectStart}
+          onConnectEnd={canvas.onConnectEnd}
+          onPaneClick={canvas.onPaneClick}
+          onEdgeMouseEnter={canvas.onEdgeMouseEnter}
+          onEdgeMouseLeave={canvas.onEdgeMouseLeave}
+          nodeTypes={canvas.nodeTypes}
           fitView
-          maxZoom={1.2}
-          minZoom={0.5}
-          nodeTypes={nodeTypes}
-          onConnect={handleConnect}
-          onConnectEnd={handleConnectEnd}
-          onConnectStart={handleConnectStart}
-          onEdgesChange={(changes) => {
-            const removeIds = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id))
-            if (removeIds.size === 0) {
-              return
-            }
-
-            setEdges((prev) => {
-              const nextEdges = prev.filter((edge) => !removeIds.has(edge.id))
-              syncContextEdges(nextEdges)
-              return nextEdges
-            })
+          nodesDraggable={!canvas.isLocked}
+          style={{ backgroundColor: "var(--canvas-bg)" }}
+          defaultEdgeOptions={{
+            style: { stroke: "var(--flow-edge-stroke)" },
+            markerEnd: { type: MarkerType.ArrowClosed },
           }}
-          nodes={nodes}
-          onNodesChange={onNodesChange}
-          onNodesDelete={handleNodesDelete}
-          onNodeDragStop={handleNodeDragStop}
-          nodesDraggable={!isLocked}
-          panOnDrag={!isLocked}
-          proOptions={{ hideAttribution: true }}
+          connectionLineStyle={{ stroke: "var(--flow-edge-stroke)" }}
+          deleteKeyCode={["Backspace", "Delete"]}
         >
-          <Background color="var(--color-grid)" gap={18} size={1.2} variant={BackgroundVariant.Dots} />
+          <Background
+            variant={BackgroundVariant.Dots}
+            gap={18}
+            size={1.5}
+            color="var(--flow-grid-dots)"
+          />
           <CanvasToolbar
-            locked={isLocked}
-            onAutoLayout={handleAutoLayout}
-            onLockToggle={() => setIsLocked((prev) => !prev)}
+            onAutoLayout={canvas.onAutoLayout}
+            locked={canvas.isLocked}
+            onLockToggle={canvas.onLockToggle}
           />
+          <FlowPanel position="top-right" className="mt-4 mr-4">
+            <button
+              type="button"
+              className="group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+              aria-label="Log out"
+              title="Log out"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                onLogout();
+              }}
+            >
+              <LogOut size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+            </button>
+          </FlowPanel>
         </ReactFlow>
-      </div>
 
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
-        <div className="pointer-events-auto">
-          <Composer
-            disabled={isSubmitting}
-            onChange={setComposerText}
-            onSubmit={() => {
-              void createChatFromComposer()
-            }}
-            placeholder="Create chat with first message"
-            value={composerText}
-          />
-        </div>
-      </div>
+        <Composer
+          value={canvas.composerDraft}
+          onChange={canvas.setComposerDraft}
+          onSend={canvas.sendComposerMessage}
+          sendDisabled={canvas.composerDraft.trim().length === 0}
+        />
+      </FlowActionsProvider>
     </div>
-  )
-}
-
-export function Canvas() {
-  return (
-    <ReactFlowProvider>
-      <CanvasInner />
-    </ReactFlowProvider>
-  )
+  );
 }

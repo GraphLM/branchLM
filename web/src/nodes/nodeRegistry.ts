@@ -1,9 +1,8 @@
-import type { NodeTypes } from '@xyflow/react'
+import ChatNode from "./chat/ChatNode";
+import MessageNode from "./message/MessageNode";
 
-import { ChatNode } from './chat/ChatNode'
-import { MessageNode } from './message/MessageNode'
-
-export const nodeTypes: NodeTypes = {
+// nodeTypes map used by FlowCanvas (XYFlow)
+export const nodeTypes = {
   chat: ChatNode,
   message: MessageNode,
-}
+} as const;
