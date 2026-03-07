@@ -25,6 +25,15 @@ class MemoryStore:
         messages.sort(key=lambda row: (row["chat_id"], row["ordinal"]))
         return messages
 
+    def list_messages_for_chat(self, user_id: str, chat_id: str) -> list[dict[str, Any]]:
+        messages = [
+            message
+            for message in self._messages.values()
+            if message["user_id"] == user_id and message["chat_id"] == chat_id
+        ]
+        messages.sort(key=lambda row: row["ordinal"])
+        return messages
+
     def list_context_edges(self, user_id: str) -> list[dict[str, Any]]:
         edges = [edge for edge in self._edges.values() if edge["user_id"] == user_id]
         edges.sort(key=lambda row: row["rank"])
@@ -45,6 +54,63 @@ class MemoryStore:
             "updated_at": now,
         }
         return {"id": chat_id, "title": title}
+
+    def update_chat_title(self, user_id: str, chat_id: str, title: str) -> None:
+        chat = self._chats.get(chat_id)
+        if chat and chat["user_id"] == user_id:
+            chat["title"] = title
+            chat["updated_at"] = datetime.now(timezone.utc).isoformat()
+
+    def delete_chat(self, user_id: str, chat_id: str) -> None:
+        chat = self._chats.get(chat_id)
+        if not chat or chat["user_id"] != user_id:
+            return
+        del self._chats[chat_id]
+
+        removed_message_ids = {
+            message_id
+            for message_id, message in self._messages.items()
+            if message["chat_id"] == chat_id and message["user_id"] == user_id
+        }
+        for message_id in removed_message_ids:
+            del self._messages[message_id]
+
+        for edge_id, edge in list(self._edges.items()):
+            if edge["user_id"] != user_id:
+                continue
+            if edge["to_chat_id"] == chat_id or edge["from_message_id"] in removed_message_ids:
+                del self._edges[edge_id]
+
+    def create_message(self, user_id: str, chat_id: str, role: str, text: str) -> dict[str, Any]:
+        ordinals = [
+            message["ordinal"]
+            for message in self._messages.values()
+            if message["user_id"] == user_id and message["chat_id"] == chat_id
+        ]
+        next_ordinal = (max(ordinals) + 1) if ordinals else 0
+
+        message_id = str(uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        self._messages[message_id] = {
+            "id": message_id,
+            "user_id": user_id,
+            "chat_id": chat_id,
+            "ordinal": next_ordinal,
+            "role": role,
+            "text": text,
+            "created_at": now,
+        }
+        return {"id": message_id, "ordinal": next_ordinal}
+
+    def delete_message(self, user_id: str, message_id: str) -> None:
+        message = self._messages.get(message_id)
+        if not message or message["user_id"] != user_id:
+            return
+        del self._messages[message_id]
+
+        for edge_id, edge in list(self._edges.items()):
+            if edge["user_id"] == user_id and edge["from_message_id"] == message_id:
+                del self._edges[edge_id]
 
     def update_chat_positions(
         self, user_id: str, positions: dict[str, tuple[float, float]]

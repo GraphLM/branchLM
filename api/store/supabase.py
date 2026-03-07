@@ -53,6 +53,23 @@ class SupabaseStore:
         except httpx.HTTPError as exc:
             raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
 
+    def list_messages_for_chat(self, user_id: str, chat_id: str) -> list[dict[str, Any]]:
+        try:
+            return (
+                self._client.table("messages")
+                .select("id,chat_id,ordinal,role,text")
+                .eq("user_id", user_id)
+                .eq("chat_id", chat_id)
+                .order("ordinal")
+                .execute()
+                .data
+                or []
+            )
+        except PostgrestAPIError as exc:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {exc.json}") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
+
     def list_context_edges(self, user_id: str) -> list[dict[str, Any]]:
         try:
             return (
@@ -95,6 +112,86 @@ class SupabaseStore:
             raise HTTPException(status_code=500, detail="Failed to create node")
         row = created[0]
         return {"id": row["id"], "title": row["title"]}
+
+    def update_chat_title(self, user_id: str, chat_id: str, title: str) -> None:
+        try:
+            (
+                self._client.table("chats")
+                .update({"title": title})
+                .eq("id", chat_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except PostgrestAPIError as exc:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {exc.json}") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
+
+    def delete_chat(self, user_id: str, chat_id: str) -> None:
+        try:
+            (
+                self._client.table("chats")
+                .delete()
+                .eq("id", chat_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except PostgrestAPIError as exc:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {exc.json}") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
+
+    def create_message(self, user_id: str, chat_id: str, role: str, text: str) -> dict[str, Any]:
+        try:
+            latest = (
+                self._client.table("messages")
+                .select("ordinal")
+                .eq("user_id", user_id)
+                .eq("chat_id", chat_id)
+                .order("ordinal", desc=True)
+                .limit(1)
+                .execute()
+                .data
+                or []
+            )
+            next_ordinal = (latest[0]["ordinal"] + 1) if latest else 0
+            created = (
+                self._client.table("messages")
+                .insert(
+                    {
+                        "user_id": user_id,
+                        "chat_id": chat_id,
+                        "ordinal": next_ordinal,
+                        "role": role,
+                        "text": text,
+                    }
+                )
+                .execute()
+                .data
+            )
+        except PostgrestAPIError as exc:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {exc.json}") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
+
+        if not created:
+            raise HTTPException(status_code=500, detail="Failed to create message")
+        row = created[0]
+        return {"id": row["id"], "ordinal": row["ordinal"]}
+
+    def delete_message(self, user_id: str, message_id: str) -> None:
+        try:
+            (
+                self._client.table("messages")
+                .delete()
+                .eq("id", message_id)
+                .eq("user_id", user_id)
+                .execute()
+            )
+        except PostgrestAPIError as exc:
+            raise HTTPException(status_code=500, detail=f"Supabase error: {exc.json}") from exc
+        except httpx.HTTPError as exc:
+            raise HTTPException(status_code=503, detail="Supabase is temporarily unavailable") from exc
 
     def update_chat_positions(
         self, user_id: str, positions: dict[str, tuple[float, float]]
