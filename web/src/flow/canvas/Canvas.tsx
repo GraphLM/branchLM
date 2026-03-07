@@ -21,9 +21,12 @@ import {
   createContextEdge,
   isMessageToChatConnection,
 } from '../connections/connectionsModel'
+import { computeChatPosition } from '../layout'
 import { Composer } from '../../ui/Composer'
 import { useMessaging } from '../messaging/useMessaging'
 import { messagingApi } from '../messaging/messagingApi'
+import type { FlowNode } from '../types'
+import { CanvasToolbar } from './CanvasToolbar'
 
 function getClientPointFromEvent(
   event: MouseEvent | TouchEvent,
@@ -55,6 +58,7 @@ function CanvasInner() {
   } = useMessaging()
   const { screenToFlowPosition } = useReactFlow()
   const [edges, setEdges] = useState<Edge[]>([])
+  const [isLocked, setIsLocked] = useState(false)
   const connectStartNodeIdRef = useRef<string | null>(null)
 
   const handleNodesDelete = useCallback(
@@ -73,6 +77,10 @@ function CanvasInner() {
 
   const handleConnect: OnConnect = useCallback(
     (connection: Connection) => {
+      if (isLocked) {
+        return
+      }
+
       if (!connection.source || !connection.target) {
         return
       }
@@ -96,19 +104,23 @@ function CanvasInner() {
         return addEdge(createContextEdge({ sourceId: connection.source!, targetId: connection.target! }), prev)
       })
     },
-    [nodes],
+    [isLocked, nodes],
   )
 
   const handleConnectStart: OnConnectStart = useCallback((_event, nodeHandle) => {
+    if (isLocked) {
+      return
+    }
+
     connectStartNodeIdRef.current = nodeHandle.nodeId
-  }, [])
+  }, [isLocked])
 
   const handleConnectEnd: OnConnectEnd = useCallback(
     async (event, connectionState) => {
       const fromNodeId = connectStartNodeIdRef.current
       connectStartNodeIdRef.current = null
 
-      if (!fromNodeId || connectionState.isValid === true) {
+      if (isLocked || !fromNodeId || connectionState.isValid === true) {
         return
       }
 
@@ -128,7 +140,7 @@ function CanvasInner() {
 
       setEdges((prev) => addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev))
     },
-    [createBranchChatFromMessage, nodes, screenToFlowPosition],
+    [createBranchChatFromMessage, isLocked, nodes, screenToFlowPosition],
   )
 
   useEffect(() => {
@@ -162,6 +174,16 @@ function CanvasInner() {
     [updateChatPosition],
   )
 
+  const handleAutoLayout = useCallback(() => {
+    const chats = nodes
+      .filter((node): node is Extract<FlowNode, { type: 'chat' }> => node.type === 'chat')
+      .sort((a, b) => (a.position.x === b.position.x ? a.position.y - b.position.y : a.position.x - b.position.x))
+
+    chats.forEach((chat, index) => {
+      updateChatPosition(chat.id, computeChatPosition(index))
+    })
+  }, [nodes, updateChatPosition])
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-[color:var(--color-text-primary)]">
       <div className="h-full w-full">
@@ -191,11 +213,16 @@ function CanvasInner() {
           onNodesChange={onNodesChange}
           onNodesDelete={handleNodesDelete}
           onNodeDragStop={handleNodeDragStop}
-          nodesDraggable
-          panOnDrag
+          nodesDraggable={!isLocked}
+          panOnDrag={!isLocked}
           proOptions={{ hideAttribution: true }}
         >
           <Background color="var(--color-grid)" gap={18} size={1.2} variant={BackgroundVariant.Dots} />
+          <CanvasToolbar
+            locked={isLocked}
+            onAutoLayout={handleAutoLayout}
+            onLockToggle={() => setIsLocked((prev) => !prev)}
+          />
         </ReactFlow>
       </div>
 
