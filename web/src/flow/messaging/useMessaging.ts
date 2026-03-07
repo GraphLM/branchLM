@@ -11,8 +11,6 @@ import {
 export function useMessaging(params: {
   workspaceId: string;
   nodes: AppNode[];
-  composerDraft: string;
-  setComposerDraft: (value: string) => void;
   setNodes: React.Dispatch<React.SetStateAction<AppNode[]>>;
   screenToFlowPosition: (position: { x: number; y: number }) => { x: number; y: number };
 }) {
@@ -81,10 +79,23 @@ export function useMessaging(params: {
     [params],
   );
 
-  const sendComposerMessage = useCallback(async () => {
+  const focusChatDraft = useCallback(
+    (chatId: string) => {
+      params.setNodes((ns) =>
+        ns.map((n) => {
+          if (n.id !== chatId || n.type !== "chat") return n;
+          return {
+            ...n,
+            data: { ...n.data, focusToken: (n.data.focusToken ?? 0) + 1 },
+          };
+        }),
+      );
+    },
+    [params],
+  );
+
+  const createChatDraft = useCallback(async () => {
     if (!params.workspaceId) return;
-    const text = params.composerDraft.trim();
-    if (!text) return;
 
     const position = params.screenToFlowPosition({
       x: window.innerWidth / 2,
@@ -103,37 +114,22 @@ export function useMessaging(params: {
       position,
       title: createdChat.title,
     });
+    const createdChatNode = {
+      ...chat,
+      selected: true,
+      data: { ...chat.data, focusToken: 1 },
+    };
 
-    const generated = await generateReply({
-      workspaceId: params.workspaceId,
-      chatId: createdChat.id,
-      text,
-    });
-    if (!generated) return;
-
-    const userMessage = makeMessageNode({
-      id: generated.userMessage.id,
-      chatId: createdChat.id,
-      indexInChat: generated.userMessage.ordinal,
-      role: "user",
-      text: generated.userMessage.text,
-    });
-    const appMessage = makeMessageNode({
-      id: generated.appMessage.id,
-      chatId: createdChat.id,
-      indexInChat: generated.appMessage.ordinal,
-      role: "app",
-      text: generated.appMessage.text,
-    });
-
-    params.setNodes((ns) => applyAutoLayout(ns.concat(chat, userMessage, appMessage)));
-    params.setComposerDraft("");
+    params.setNodes((ns) =>
+      applyAutoLayout(ns.map((n) => ({ ...n, selected: false })).concat(createdChatNode)),
+    );
   }, [params]);
 
   return {
     updateChatDraft,
     updateChatTitle,
     sendChatMessage,
-    sendComposerMessage,
+    focusChatDraft,
+    createChatDraft,
   };
 }

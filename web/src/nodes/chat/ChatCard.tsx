@@ -7,6 +7,7 @@ type Props = {
   draft: string;
   selected: boolean;
   glow?: boolean;
+  focusToken?: number;
   targetHandle?: ReactNode;
   onDelete(): void;
   onDraftChange(nextDraft: string): void;
@@ -20,6 +21,7 @@ export default function ChatCard(props: Props) {
     draft,
     selected,
     glow = false,
+    focusToken,
     targetHandle,
     onDelete,
     onDraftChange,
@@ -30,6 +32,7 @@ export default function ChatCard(props: Props) {
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(title);
   const titleInputRef = useRef<HTMLInputElement | null>(null);
+  const draftInputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (!isEditingTitle) setTitleDraft(title);
@@ -43,6 +46,14 @@ export default function ChatCard(props: Props) {
     }, 0);
     return () => window.clearTimeout(t);
   }, [isEditingTitle]);
+
+  useEffect(() => {
+    if (focusToken == null) return;
+    const t = window.setTimeout(() => {
+      draftInputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(t);
+  }, [focusToken]);
 
   const commitTitle = () => {
     const next = titleDraft.trim();
@@ -104,9 +115,16 @@ export default function ChatCard(props: Props) {
 
         <div className="absolute left-2 right-2 bottom-2 flex items-center rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1">
           <input
+            ref={draftInputRef}
             className="nodrag flex-1 bg-transparent px-2 py-1 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none"
             value={draft}
             onChange={(e) => onDraftChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key !== "Enter") return;
+              e.preventDefault();
+              e.stopPropagation();
+              onSend();
+            }}
             onMouseDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             placeholder="Send a message…"

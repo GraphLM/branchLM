@@ -18,6 +18,7 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
     <ChatCard
       title={data.title}
       draft={data.draft}
+      focusToken={data.focusToken}
       selected={selected}
       glow={hoveredNodeId === id}
       targetHandle={

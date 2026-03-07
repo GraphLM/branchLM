@@ -1,22 +1,30 @@
 import { Panel, useReactFlow } from "@xyflow/react";
-import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus } from "lucide-react";
+import { LayoutGrid, Lock, LockOpen, Maximize2, Minus, Plus, SendHorizontal, SquarePen } from "lucide-react";
 
 type Props = {
   onAutoLayout: () => void;
   locked: boolean;
   onLockToggle: () => void;
+  primaryMode: "send" | "new-chat";
+  onPrimaryAction: () => void;
 };
 
 const buttonBase =
   "group relative flex items-center justify-center rounded-lg border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)";
 
-export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Props) {
+export default function CanvasToolbar({
+  onAutoLayout,
+  locked,
+  onLockToggle,
+  primaryMode,
+  onPrimaryAction,
+}: Props) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();
 
   return (
-    <Panel position="bottom-left" className="mb-4 ml-4">
+    <Panel position="bottom-center" className="mb-6">
       <div
-        className="flex flex-col gap-1"
+        className="flex items-center gap-1 rounded-2xl border border-(--panel-border) bg-(--panel-bg) p-1 elev-2 backdrop-blur"
         onMouseDown={(e) => e.stopPropagation()}
       >
         <button
@@ -66,6 +74,20 @@ export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Pr
             <Lock size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
           ) : (
             <LockOpen size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+          )}
+        </button>
+        <div className="mx-1 h-6 w-px bg-(--panel-border)" />
+        <button
+          type="button"
+          className={buttonBase}
+          aria-label={primaryMode === "send" ? "Send message" : "Create chat"}
+          title={primaryMode === "send" ? "Send message" : "Create chat"}
+          onClick={onPrimaryAction}
+        >
+          {primaryMode === "send" ? (
+            <SendHorizontal size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
+          ) : (
+            <SquarePen size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
           )}
         </button>
       </div>
