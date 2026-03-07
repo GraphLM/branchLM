@@ -1,6 +1,6 @@
-## branchLM API (temporary)
+## branchLM API
 
-This FastAPI service backs the graph canvas in `web/src/flow/FlowCanvas.tsx`.
+This FastAPI service backs the graph canvas.
 
 ### Setup (using `uv`)
 
@@ -14,10 +14,10 @@ uv sync
 
 ### Supabase schema
 
-This repo now uses **Supabase migrations** under `supabase/migrations/`.
+This repo uses migrations under `supabase/migrations/`.
 
-- For a one-off manual setup, you can still run `api/supabase_schema.sql` in the Supabase SQL editor.
-- Recommended: use the Supabase CLI and run `supabase db push` (see repo root README / commands below).
+- Manual setup option: run `api/supabase_schema.sql` in Supabase SQL editor.
+- Recommended: use Supabase CLI and run `supabase db push`.
 
 ### Run dev server
 
@@ -29,16 +29,20 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 ### Endpoints
 
 - `GET /api/health` health check
-- `GET /api/graph` load graph
-- `PUT /api/graph/layout` persist layout + context edges
-- `POST /api/chats` create a chat
-- `PATCH /api/chats/{chatId}` rename chat
-- `DELETE /api/chats/{chatId}` delete chat (cascades)
-- `POST /api/chats/{chatId}/messages` add message
-- `POST /api/chats/{chatId}/generate` create a user message and an LLM reply
-- `DELETE /api/messages/{messageId}` delete message
+- `GET /api/workspaces` list workspaces
+- `POST /api/workspaces` create workspace
+- `PATCH /api/workspaces/{workspaceId}` rename workspace
+- `DELETE /api/workspaces/{workspaceId}` delete workspace (cascades)
+- `GET /api/workspaces/{workspaceId}/graph` load graph
+- `PUT /api/workspaces/{workspaceId}/graph/layout` persist layout + context edges
+- `POST /api/workspaces/{workspaceId}/chats` create a chat
+- `PATCH /api/workspaces/{workspaceId}/chats/{chatId}` rename chat
+- `DELETE /api/workspaces/{workspaceId}/chats/{chatId}` delete chat (cascades)
+- `POST /api/workspaces/{workspaceId}/chats/{chatId}/messages` add message
+- `POST /api/workspaces/{workspaceId}/chats/{chatId}/generate` create user message + LLM reply
+- `DELETE /api/workspaces/{workspaceId}/messages/{messageId}` delete message
 
-All graph/chats/messages endpoints require:
+All workspace/graph/chat/message endpoints require:
 
 ```http
 Authorization: Bearer <supabase_access_token>
@@ -52,24 +56,6 @@ Dev bypass option:
 ### LLM safeguards
 
 - OpenRouter credentials are server-only and read from `.env`
-- Prompt size, history size, and completion size are capped with env-configurable limits
+- Prompt/history/completion sizes are capped with env-configurable limits
 - Chat generation is rate-limited per user and client IP
-- When provider calls fail, the API returns sanitized error messages without exposing provider details
-- `GET /api/graph` load graph
-- `PUT /api/graph/layout` persist layout + context edges
-- `POST /api/chats` create a chat
-- `PATCH /api/chats/{chatId}` rename chat
-- `DELETE /api/chats/{chatId}` delete chat (cascades)
-- `POST /api/chats/{chatId}/messages` add message
-- `DELETE /api/messages/{messageId}` delete message
-
-All graph/chats/messages endpoints require:
-
-```http
-Authorization: Bearer <supabase_access_token>
-```
-
-Dev bypass option:
-
-- Set `AUTH_DEV_BYPASS=true` to accept synthetic dev tokens shaped like `dev-bypass:<base64url_email>`.
-- Intended only for local development.
+- Provider failures return sanitized errors without exposing internals

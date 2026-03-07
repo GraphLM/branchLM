@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { MouseEvent } from "react";
 import {
   MarkerType,
   applyEdgeChanges,
@@ -13,18 +14,23 @@ import { deleteChat, deleteMessage, fetchGraph, saveGraphLayout } from "./graphA
 import { applyAutoLayout, collectCascadeRemoval, styleRenderedEdges } from "./graphModel";
 
 function persistCascadeDeletes(params: {
+  workspaceId: string;
   chatIds: Set<string>;
   messageIds: Set<string>;
 }) {
-  for (const chatId of params.chatIds) {
-    deleteChat({ chatId }).catch(() => {});
-  }
-  for (const messageId of params.messageIds) {
-    deleteMessage({ messageId }).catch(() => {});
-  }
+  void (async () => {
+    // Delete leaf messages first so we do not hit 404s after chat-level cascades.
+    for (const messageId of params.messageIds) {
+      await deleteMessage({ workspaceId: params.workspaceId, messageId }).catch(() => {});
+    }
+    for (const chatId of params.chatIds) {
+      await deleteChat({ workspaceId: params.workspaceId, chatId }).catch(() => {});
+    }
+  })();
 }
 
 export function useGraph(params: {
+  workspaceId: string | null;
   fitView: (options?: { duration?: number; padding?: number }) => void;
 }) {
   const hasLoadedPersistedStateRef = useRef(false);
@@ -40,9 +46,24 @@ export function useGraph(params: {
     let cancelled = false;
     const controller = new AbortController();
 
+    setNodes([]);
+    setEdges([]);
+    loadedGraphSuccessfullyRef.current = false;
+    hasLoadedPersistedStateRef.current = false;
+
+    const workspaceId = params.workspaceId;
+    if (!workspaceId) {
+      hasLoadedPersistedStateRef.current = true;
+      loadedGraphSuccessfullyRef.current = true;
+      return () => {
+        cancelled = true;
+        controller.abort();
+      };
+    }
+
     (async () => {
       try {
-        const data = await fetchGraph({ signal: controller.signal });
+        const data = await fetchGraph({ workspaceId, signal: controller.signal });
         if (!data || cancelled) return;
 
         const serverHasData = (data.chats?.length ?? 0) > 0 || (data.messages?.length ?? 0) > 0;
@@ -94,9 +115,11 @@ export function useGraph(params: {
       cancelled = true;
       controller.abort();
     };
-  }, []);
+  }, [params.workspaceId]);
 
   useEffect(() => {
+    const workspaceId = params.workspaceId;
+    if (!workspaceId) return;
     if (!hasLoadedPersistedStateRef.current) return;
 
     if (saveTimerRef.current) {
@@ -106,7 +129,7 @@ export function useGraph(params: {
     saveTimerRef.current = window.setTimeout(() => {
       if (!loadedGraphSuccessfullyRef.current) return;
 
-      saveGraphLayout({ nodes, edges }).catch(() => {
+      saveGraphLayout({ workspaceId, nodes, edges }).catch(() => {
         // ignore
       });
     }, 500);
@@ -117,7 +140,7 @@ export function useGraph(params: {
         saveTimerRef.current = null;
       }
     };
-  }, [edges, nodes]);
+  }, [edges, nodes, params.workspaceId]);
 
   useEffect(() => {
     setNodes((ns) => applyAutoLayout(ns));
@@ -125,8 +148,12 @@ export function useGraph(params: {
 
   const deleteNodesCascade = useCallback(
     (nodeIds: Set<string>) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+
       const snapshotRemoval = collectCascadeRemoval(nodes, nodeIds);
       persistCascadeDeletes({
+        workspaceId,
         chatIds: snapshotRemoval.removedChatIds,
         messageIds: snapshotRemoval.removedMessageIds,
       });
@@ -141,12 +168,10 @@ export function useGraph(params: {
           ),
         );
 
-        return applyAutoLayout(
-          nodesSnapshot.filter((n) => !runtimeRemoval.removedAllIds.has(n.id)),
-        );
+        return applyAutoLayout(nodesSnapshot.filter((n) => !runtimeRemoval.removedAllIds.has(n.id)));
       });
     },
-    [nodes],
+    [nodes, params.workspaceId],
   );
 
   const deleteChatById = useCallback(
@@ -165,11 +190,13 @@ export function useGraph(params: {
 
   const onNodesChange: OnNodesChange<AppNode> = useCallback(
     (changes) => {
+      const workspaceId = params.workspaceId;
       const removedIds = new Set(changes.filter((c) => c.type === "remove").map((c) => c.id));
 
-      if (removedIds.size > 0) {
+      if (workspaceId && removedIds.size > 0) {
         const removal = collectCascadeRemoval(nodes, removedIds);
         persistCascadeDeletes({
+          workspaceId,
           chatIds: removal.removedChatIds,
           messageIds: removal.removedMessageIds,
         });
@@ -182,8 +209,7 @@ export function useGraph(params: {
           setEdges((edgesSnapshot) =>
             edgesSnapshot.filter(
               (e) =>
-                !removal.removedAllIds.has(e.source) &&
-                !removal.removedAllIds.has(e.target),
+                !removal.removedAllIds.has(e.source) && !removal.removedAllIds.has(e.target),
             ),
           );
         }
@@ -195,7 +221,7 @@ export function useGraph(params: {
         return applyAutoLayout(next);
       });
     },
-    [nodes],
+    [nodes, params.workspaceId],
   );
 
   const onEdgesChange: OnEdgesChange = useCallback((changes) => {
@@ -225,7 +251,7 @@ export function useGraph(params: {
     onNodesChange,
     onEdgesChange,
     onAutoLayout,
-    onEdgeMouseEnter: (_event: React.MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id),
+    onEdgeMouseEnter: (_event: MouseEvent, edge: Edge) => setHoveredEdgeId(edge.id),
     onEdgeMouseLeave: () => setHoveredEdgeId(null),
   };
 }

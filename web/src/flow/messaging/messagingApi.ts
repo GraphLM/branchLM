@@ -1,10 +1,11 @@
 import { apiFetch } from "../../lib/api";
 
 export async function createChat(params: {
+  workspaceId: string;
   title: string;
   position: { x: number; y: number };
 }): Promise<{ id: string; title: string } | null> {
-  const res = await apiFetch("/api/chats", {
+  const res = await apiFetch(`/api/workspaces/${params.workspaceId}/chats`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title: params.title, position: params.position }),
@@ -14,10 +15,11 @@ export async function createChat(params: {
 }
 
 export async function updateChatTitle(params: {
+  workspaceId: string;
   chatId: string;
   title: string;
 }): Promise<void> {
-  await apiFetch(`/api/chats/${params.chatId}`, {
+  await apiFetch(`/api/workspaces/${params.workspaceId}/chats/${params.chatId}`, {
     method: "PATCH",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title: params.title }),
@@ -25,11 +27,12 @@ export async function updateChatTitle(params: {
 }
 
 export async function createMessage(params: {
+  workspaceId: string;
   chatId: string;
   role: "user" | "app";
   text: string;
 }): Promise<{ id: string; ordinal: number } | null> {
-  const res = await apiFetch(`/api/chats/${params.chatId}/messages`, {
+  const res = await apiFetch(`/api/workspaces/${params.workspaceId}/chats/${params.chatId}/messages`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ role: params.role, text: params.text }),
@@ -39,6 +42,7 @@ export async function createMessage(params: {
 }
 
 export async function generateReply(params: {
+  workspaceId: string;
   chatId: string;
   text: string;
 }): Promise<
@@ -48,11 +52,14 @@ export async function generateReply(params: {
     }
   | null
 > {
-  const res = await apiFetch(`/api/chats/${params.chatId}/generate`, {
+  const res = await apiFetch(
+    `/api/workspaces/${params.workspaceId}/chats/${params.chatId}/generate`,
+    {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ text: params.text }),
-  });
+    },
+  );
   if (!res.ok) return null;
   return (await res.json()) as {
     userMessage: { id: string; chatId: string; ordinal: number; role: "user"; text: string };

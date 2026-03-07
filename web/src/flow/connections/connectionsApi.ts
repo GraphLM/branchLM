@@ -1,10 +1,11 @@
 import { apiFetch } from "../../lib/api";
 
 export async function createChat(params: {
+  workspaceId: string;
   title: string;
   position: { x: number; y: number };
 }): Promise<{ id: string; title: string } | null> {
-  const res = await apiFetch("/api/chats", {
+  const res = await apiFetch(`/api/workspaces/${params.workspaceId}/chats`, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ title: params.title, position: params.position }),

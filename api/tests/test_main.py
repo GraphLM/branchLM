@@ -18,11 +18,57 @@ class FakeLLMClient:
         return self.reply
 
 
+def _create_workspace(client: TestClient, title: str = "Untitled workspace") -> str:
+    resp = client.post("/api/workspaces", json={"title": title}, headers=DEV_AUTH_HEADERS)
+    assert resp.status_code == 200
+    return resp.json()["id"]
+
+
+def _create_chat(client: TestClient, workspace_id: str, title: str = "Test chat") -> str:
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats",
+        json={"title": title, "position": {"x": 10, "y": 20}},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert resp.status_code == 200
+    return resp.json()["id"]
+
+
 def test_health() -> None:
     client = TestClient(create_app())
     resp = client.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["status"] == "ok"
+
+
+def test_workspaces_crud() -> None:
+    client = TestClient(create_app())
+
+    created = client.post(
+        "/api/workspaces", json={"title": "Workspace A"}, headers=DEV_AUTH_HEADERS
+    )
+    assert created.status_code == 200
+    workspace_id = created.json()["id"]
+
+    listed = client.get("/api/workspaces", headers=DEV_AUTH_HEADERS)
+    assert listed.status_code == 200
+    assert any(workspace["id"] == workspace_id for workspace in listed.json())
+
+    patched = client.patch(
+        f"/api/workspaces/{workspace_id}",
+        json={"title": "Workspace B"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert patched.status_code == 200
+
+    relisted = client.get("/api/workspaces", headers=DEV_AUTH_HEADERS)
+    assert any(
+        workspace["id"] == workspace_id and workspace["title"] == "Workspace B"
+        for workspace in relisted.json()
+    )
+
+    deleted = client.delete(f"/api/workspaces/{workspace_id}", headers=DEV_AUTH_HEADERS)
+    assert deleted.status_code == 200
 
 
 def test_generate_reply_persists_user_and_app_messages() -> None:
@@ -35,15 +81,11 @@ def test_generate_reply_persists_user_and_app_messages() -> None:
     app.state.llm_client = fake_llm
     client = TestClient(app)
 
-    chat_resp = client.post(
-        "/api/chats",
-        json={"title": "Test chat", "position": {"x": 10, "y": 20}},
-        headers=DEV_AUTH_HEADERS,
-    )
-    chat_id = chat_resp.json()["id"]
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
 
     resp = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "Hello there"},
         headers=DEV_AUTH_HEADERS,
     )
@@ -71,20 +113,16 @@ def test_generate_reply_rate_limits_requests() -> None:
     app.state.llm_client = FakeLLMClient("reply")
     client = TestClient(app)
 
-    chat_resp = client.post(
-        "/api/chats",
-        json={"title": "Test chat", "position": {"x": 0, "y": 0}},
-        headers=DEV_AUTH_HEADERS,
-    )
-    chat_id = chat_resp.json()["id"]
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
 
     first = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "First"},
         headers=DEV_AUTH_HEADERS,
     )
     second = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "Second"},
         headers=DEV_AUTH_HEADERS,
     )
@@ -106,20 +144,16 @@ def test_generate_reply_rejects_empty_or_oversized_input() -> None:
     app.state.llm_client = FakeLLMClient("reply")
     client = TestClient(app)
 
-    chat_resp = client.post(
-        "/api/chats",
-        json={"title": "Test chat", "position": {"x": 0, "y": 0}},
-        headers=DEV_AUTH_HEADERS,
-    )
-    chat_id = chat_resp.json()["id"]
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
 
     empty_resp = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "   "},
         headers=DEV_AUTH_HEADERS,
     )
     long_resp = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "123456"},
         headers=DEV_AUTH_HEADERS,
     )
@@ -141,18 +175,49 @@ def test_generate_reply_surfaces_safe_provider_errors() -> None:
     app.state.llm_client = SafeFailLLMClient()
     client = TestClient(app)
 
-    chat_resp = client.post(
-        "/api/chats",
-        json={"title": "Test chat", "position": {"x": 0, "y": 0}},
-        headers=DEV_AUTH_HEADERS,
-    )
-    chat_id = chat_resp.json()["id"]
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
 
     resp = client.post(
-        f"/api/chats/{chat_id}/generate",
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
         json={"text": "Hello"},
         headers=DEV_AUTH_HEADERS,
     )
 
     assert resp.status_code == 502
     assert resp.json()["detail"] == "The language model is temporarily unavailable."
+
+
+def test_workspace_isolation_and_mismatch_rejected() -> None:
+    client = TestClient(create_app())
+
+    workspace_a = _create_workspace(client, "A")
+    workspace_b = _create_workspace(client, "B")
+    chat_id = _create_chat(client, workspace_a, "Chat in A")
+
+    mismatch_resp = client.post(
+        f"/api/workspaces/{workspace_b}/chats/{chat_id}/messages",
+        json={"role": "user", "text": "Should fail"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert mismatch_resp.status_code == 404
+
+
+def test_delete_workspace_cascades_graph_data() -> None:
+    client = TestClient(create_app())
+
+    workspace_id = _create_workspace(client, "Cascade")
+    chat_id = _create_chat(client, workspace_id)
+
+    message_resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+        json={"role": "user", "text": "msg"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert message_resp.status_code == 200
+
+    delete_resp = client.delete(f"/api/workspaces/{workspace_id}", headers=DEV_AUTH_HEADERS)
+    assert delete_resp.status_code == 200
+
+    graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    assert graph_resp.status_code == 404

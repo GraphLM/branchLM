@@ -6,15 +6,16 @@ from schemas import GraphLayoutPutBody
 from store.base import Store
 
 
-def get_graph(*, user_id: str, store: Store) -> dict[str, Any]:
-    chats = store.list_chats(user_id)
-    messages = store.list_messages(user_id)
-    edges = store.list_context_edges(user_id)
+def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any]:
+    chats = store.list_chats(user_id, workspace_id)
+    messages = store.list_messages(user_id, workspace_id)
+    edges = store.list_context_edges(user_id, workspace_id)
 
     return {
         "chats": [
             {
                 "id": c["id"],
+                "workspaceId": c["workspace_id"],
                 "title": c["title"],
                 "position": {"x": c["position_x"], "y": c["position_y"]},
             }
@@ -41,14 +42,17 @@ def get_graph(*, user_id: str, store: Store) -> dict[str, Any]:
     }
 
 
-def put_graph_layout(*, user_id: str, body: GraphLayoutPutBody, store: Store) -> None:
+def put_graph_layout(
+    *, user_id: str, workspace_id: str, body: GraphLayoutPutBody, store: Store
+) -> None:
     positions: dict[str, tuple[float, float]] = {
         chat_id: (pos.x, pos.y) for chat_id, pos in body.chatPositions.items()
     }
-    store.update_chat_positions(user_id, positions)
+    store.update_chat_positions(user_id, workspace_id, positions)
 
     store.replace_context_edges(
         user_id,
+        workspace_id,
         [
             {
                 "from_message_id": e.fromMessageId,

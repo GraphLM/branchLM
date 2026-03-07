@@ -12,7 +12,7 @@ import {
 } from "./connectionsModel";
 
 export function useConnections(params: UseConnectionsParams) {
-  const { nodes, setNodes, setEdges, screenToFlowPosition } = params;
+  const { nodes, setNodes, setEdges, screenToFlowPosition, workspaceId } = params;
   const connectStartNodeIdRef = useRef<string | null>(null);
   const nodesRef = useRef(nodes);
   const [pendingSourceMessageId, setPendingSourceMessageId] = useState<string | null>(null);
@@ -65,6 +65,7 @@ export function useConnections(params: UseConnectionsParams) {
 
       const fromNode = nodesRef.current.find((n) => n.id === fromNodeId);
       if (!fromNode || fromNode.type !== "message") return;
+      if (!workspaceId) return;
 
       const clientPoint =
         "touches" in event && event.touches.length > 0
@@ -85,6 +86,7 @@ export function useConnections(params: UseConnectionsParams) {
       });
 
       const createdChat = await createChat({
+        workspaceId,
         title: "New chat",
         position,
       });
@@ -106,7 +108,7 @@ export function useConnections(params: UseConnectionsParams) {
         addEdge(createContextEdge({ sourceId: fromNodeId, targetId: createdChat.id }), es),
       );
     },
-    [screenToFlowPosition, setEdges, setNodes],
+    [screenToFlowPosition, setEdges, setNodes, workspaceId],
   );
 
   const onMessageSourceHandleActivate = useCallback(
