@@ -15,8 +15,16 @@ class CreateChatBody(BaseModel):
     position: Position
 
 
+class PatchChatBody(BaseModel):
+    title: str
+
+
 class CreateMessageBody(BaseModel):
     role: Literal["user", "app"]
+    text: str
+
+
+class GenerateReplyBody(BaseModel):
     text: str
 
 

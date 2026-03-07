@@ -6,7 +6,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import chats, graph, health
+from routers import chats, graph, health, messages
+from services.llm_service import OpenRouterClient
 from settings import Settings
 from store.memory import MemoryStore
 
@@ -39,7 +40,7 @@ def create_app() -> FastAPI:
         app.state.supabase_admin = None
         app.state.store = MemoryStore()
 
-    app.state.llm_client = None
+    app.state.llm_client = OpenRouterClient(settings)
     app.state.rate_limiter = None
 
     app.add_middleware(
@@ -53,6 +54,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(graph.router)
     app.include_router(chats.router)
+    app.include_router(messages.router)
 
     return app
 
