@@ -1,0 +1,30 @@
+from __future__ import annotations
+
+from typing import Annotated
+
+from fastapi import APIRouter, Depends
+
+from deps import get_store, get_user_id
+from schemas import GraphLayoutPutBody
+from services.graph_service import get_graph as svc_get_graph
+from services.graph_service import put_graph_layout as svc_put_graph_layout
+from store.base import Store
+
+router = APIRouter()
+
+
+@router.get("/api/graph")
+def get_graph(
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[Store, Depends(get_store)],
+) -> dict:
+    return svc_get_graph(user_id=user_id, store=store)
+
+
+@router.put("/api/graph/layout")
+def put_graph_layout(
+    body: GraphLayoutPutBody,
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[Store, Depends(get_store)],
+) -> None:
+    svc_put_graph_layout(user_id=user_id, body=body, store=store)
