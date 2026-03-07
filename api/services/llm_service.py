@@ -14,7 +14,9 @@ class LLMConfigurationError(RuntimeError):
 
 
 class LLMServiceError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 class OpenRouterClient:
@@ -58,11 +60,17 @@ class OpenRouterClient:
                 return self._extract_text(data)
             except error.HTTPError as exc:
                 status_code = exc.code
+                raw_body = ""
+                try:
+                    raw_body = exc.read().decode("utf-8", errors="ignore")
+                except Exception:
+                    raw_body = ""
                 should_retry = status_code == 429 or 500 <= status_code < 600
                 if should_retry and attempt < 2:
                     time.sleep(0.4 * (attempt + 1))
                     continue
-                raise LLMServiceError(self._message_for_status(status_code)) from exc
+                message, code = self._message_for_status(status_code, raw_body)
+                raise LLMServiceError(message, code=code) from exc
             except (error.URLError, TimeoutError) as exc:
                 if attempt < 2:
                     time.sleep(0.4 * (attempt + 1))
@@ -109,9 +117,19 @@ class OpenRouterClient:
             raise LLMConfigurationError("OpenRouter base URL is invalid.")
 
     @staticmethod
-    def _message_for_status(status_code: int) -> str:
+    def _message_for_status(status_code: int, raw_body: str) -> tuple[str, str | None]:
+        body = raw_body.lower()
+        context_overflow_markers = (
+            "context length",
+            "context window",
+            "too many tokens",
+            "maximum context",
+            "prompt is too long",
+        )
+        if any(marker in body for marker in context_overflow_markers):
+            return ("The prompt exceeded the model context window.", "context_length_exceeded")
         if status_code == 429:
-            return "The language model is rate limited right now. Please retry shortly."
+            return ("The language model is rate limited right now. Please retry shortly.", None)
         if 400 <= status_code < 500:
-            return "The language model request was rejected."
-        return "The language model is temporarily unavailable."
+            return ("The language model request was rejected.", None)
+        return ("The language model is temporarily unavailable.", None)

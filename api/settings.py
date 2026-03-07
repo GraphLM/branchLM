@@ -60,6 +60,10 @@ class Settings:
     max_prompt_chars: int
     max_history_messages: int
     max_completion_tokens: int
+    model_context_window_tokens: int
+    input_token_safety_margin: int
+    estimated_chars_per_token: int
+    context_summary_max_chars: int
     rate_limit_per_minute: int
     rate_limit_burst: int
     rate_limit_burst_window_seconds: int
@@ -93,6 +97,10 @@ class Settings:
             max_prompt_chars=_env_int("MAX_PROMPT_CHARS", 4000),
             max_history_messages=_env_int("MAX_HISTORY_MESSAGES", 12),
             max_completion_tokens=_env_int("MAX_COMPLETION_TOKENS", 600),
+            model_context_window_tokens=_env_int("MODEL_CONTEXT_WINDOW_TOKENS", 8192),
+            input_token_safety_margin=_env_int("INPUT_TOKEN_SAFETY_MARGIN", 256),
+            estimated_chars_per_token=_env_int("ESTIMATED_CHARS_PER_TOKEN", 4),
+            context_summary_max_chars=_env_int("CONTEXT_SUMMARY_MAX_CHARS", 600),
             rate_limit_per_minute=_env_int("RATE_LIMIT_PER_MINUTE", 20),
             rate_limit_burst=_env_int("RATE_LIMIT_BURST", 4),
             rate_limit_burst_window_seconds=_env_int("RATE_LIMIT_BURST_WINDOW_SECONDS", 10),

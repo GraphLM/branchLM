@@ -3,6 +3,7 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from main import create_app
+from services.llm_service import LLMServiceError
 from services.rate_limit import SlidingWindowRateLimiter
 
 DEV_AUTH_HEADERS = {"Authorization": "Bearer dev-bypass:dGVzdEBleGFtcGxlLmNvbQ"}
@@ -201,6 +202,252 @@ def test_workspace_isolation_and_mismatch_rejected() -> None:
         headers=DEV_AUTH_HEADERS,
     )
     assert mismatch_resp.status_code == 404
+
+
+def test_context_splicing_from_user_message_excludes_the_target_user_message() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_llm = FakeLLMClient("reply")
+    app.state.llm_client = fake_llm
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    source_chat_id = _create_chat(client, workspace_id, "Source")
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    m0 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "u0"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    m1 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "a0"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    m2 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "u1"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    assert m0 and m1 and m2
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [
+                {
+                    "fromMessageId": m2,
+                    "toChatId": target_chat_id,
+                    "rank": 0,
+                }
+            ],
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    generate_resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "new question"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert generate_resp.status_code == 200
+
+    assert fake_llm.calls
+    assert fake_llm.calls[-1] == [
+        {"role": "user", "content": "u0"},
+        {"role": "assistant", "content": "a0"},
+        {"role": "user", "content": "new question"},
+    ]
+
+
+def test_context_splicing_from_app_message_includes_the_target_app_message() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_llm = FakeLLMClient("reply")
+    app.state.llm_client = fake_llm
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    source_chat_id = _create_chat(client, workspace_id, "Source")
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    m0 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "u0"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    m1 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "a0"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    m2 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "u1"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    m3 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "a1"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    assert m0 and m1 and m2 and m3
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [
+                {
+                    "fromMessageId": m3,
+                    "toChatId": target_chat_id,
+                    "rank": 0,
+                }
+            ],
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    generate_resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "new question"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert generate_resp.status_code == 200
+
+    assert fake_llm.calls
+    assert fake_llm.calls[-1] == [
+        {"role": "user", "content": "u0"},
+        {"role": "assistant", "content": "a0"},
+        {"role": "user", "content": "u1"},
+        {"role": "assistant", "content": "a1"},
+        {"role": "user", "content": "new question"},
+    ]
+
+
+def test_generate_reply_token_budget_prioritizes_target_chat_history() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings,
+        openrouter_api_key="test-key",
+        auth_dev_bypass=True,
+        max_history_messages=20,
+        model_context_window_tokens=80,
+        max_completion_tokens=10,
+        input_token_safety_margin=10,
+        estimated_chars_per_token=1,
+        context_summary_max_chars=0,
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_llm = FakeLLMClient("reply")
+    app.state.llm_client = fake_llm
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    source_chat_id = _create_chat(client, workspace_id, "Source")
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    source_app = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "source app message that should be dropped first"},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "source user message"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/messages",
+        json={"role": "user", "text": "target user message kept"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/messages",
+        json={"role": "app", "text": "target app message kept"},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [
+                {
+                    "fromMessageId": source_app,
+                    "toChatId": target_chat_id,
+                    "rank": 0,
+                }
+            ],
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    generate_resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "new question"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert generate_resp.status_code == 200
+    sent = fake_llm.calls[-1]
+
+    assert {"role": "assistant", "content": "target app message kept"} in sent
+    assert not any("source app message that should be dropped first" == m["content"] for m in sent)
+
+
+def test_generate_reply_retries_once_when_context_overflowed() -> None:
+    class ContextOverflowThenSuccess:
+        def __init__(self) -> None:
+            self.calls: list[list[dict[str, str]]] = []
+
+        def generate_reply(self, messages: list[dict[str, str]]) -> str:
+            self.calls.append(messages)
+            if len(self.calls) == 1:
+                raise LLMServiceError(
+                    "The prompt exceeded the model context window.",
+                    code="context_length_exceeded",
+                )
+            return "Recovered response"
+
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    flaky_llm = ContextOverflowThenSuccess()
+    app.state.llm_client = flaky_llm
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+
+    for idx in range(6):
+        client.post(
+            f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+            json={"role": "user" if idx % 2 == 0 else "app", "text": f"m{idx}"},
+            headers=DEV_AUTH_HEADERS,
+        )
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
+        json={"text": "new prompt"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["appMessage"]["text"] == "Recovered response"
+    assert len(flaky_llm.calls) == 2
+    assert len(flaky_llm.calls[1]) < len(flaky_llm.calls[0])
 
 
 def test_delete_workspace_cascades_graph_data() -> None:
