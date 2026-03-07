@@ -1,10 +1,10 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 
-import type { MessageNodeUiData } from '../../flow/types'
+import type { MessageFlowNode } from '../../flow/types'
 import { MessageBubble } from './MessageBubble'
 
-export function MessageNode(props: NodeProps) {
-  const data = props.data as MessageNodeUiData
+export function MessageNode(props: NodeProps<MessageFlowNode>) {
+  const { data } = props
 
   return (
     <MessageBubble

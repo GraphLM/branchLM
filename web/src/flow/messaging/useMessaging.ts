@@ -57,9 +57,7 @@ export function useMessaging(): UseMessagingReturn {
   }, [])
 
   const updateChatPosition = useCallback((chatId: string, position: XYPosition) => {
-    setChats((prev) =>
-      prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat)),
-    )
+    setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat)))
   }, [])
 
   const deleteChat = useCallback(async (chatId: string) => {
@@ -98,29 +96,33 @@ export function useMessaging(): UseMessagingReturn {
       }
 
       setIsSubmitting(true)
+      try {
+        const chatMessages = normalizeMessages(messages, chatId)
+        const userMessage = await messagingApi.createMessage({
+          chatId,
+          text: input,
+          role: 'user',
+          ordinal: chatMessages.length,
+        })
+        const reply = createMockReply(input)
+        const appMessage = await messagingApi.createMessage({
+          chatId,
+          text: reply.text,
+          role: reply.role,
+          ordinal: chatMessages.length + 1,
+        })
 
-      const chatMessages = normalizeMessages(messages, chatId)
-      const userMessage = await messagingApi.createMessage({
-        chatId,
-        text: input,
-        role: 'user',
-        ordinal: chatMessages.length,
-      })
-      const reply = createMockReply(input)
-      const appMessage = await messagingApi.createMessage({
-        chatId,
-        text: reply.text,
-        role: reply.role,
-        ordinal: chatMessages.length + 1,
-      })
+        setMessages((prev) => {
+          const otherMessages = prev.filter((message) => message.chatId !== chatId)
+          return [...otherMessages, ...chatMessages, userMessage, appMessage]
+        })
 
-      setMessages((prev) => {
-        const otherMessages = prev.filter((message) => message.chatId !== chatId)
-        return [...otherMessages, ...chatMessages, userMessage, appMessage]
-      })
-
-      setChats((prev) => prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)))
-      setIsSubmitting(false)
+        setChats((prev) =>
+          prev.map((item) => (item.id === chatId ? { ...item, draft: '' } : item)),
+        )
+      } finally {
+        setIsSubmitting(false)
+      }
     },
     [chats, messages],
   )
@@ -132,33 +134,35 @@ export function useMessaging(): UseMessagingReturn {
     }
 
     setIsSubmitting(true)
+    try {
+      const nextChatTitle = `Chat ${chats.length + 1}`
 
-    const nextChatTitle = `Chat ${chats.length + 1}`
+      const newChat = await messagingApi.createChat({
+        title: nextChatTitle,
+        draft: '',
+      })
 
-    const newChat = await messagingApi.createChat({
-      title: nextChatTitle,
-      draft: '',
-    })
+      const userMessage = await messagingApi.createMessage({
+        chatId: newChat.id,
+        text: input,
+        role: 'user',
+        ordinal: 0,
+      })
 
-    const userMessage = await messagingApi.createMessage({
-      chatId: newChat.id,
-      text: input,
-      role: 'user',
-      ordinal: 0,
-    })
+      const reply = createMockReply(input)
+      const appMessage = await messagingApi.createMessage({
+        chatId: newChat.id,
+        text: reply.text,
+        role: reply.role,
+        ordinal: 1,
+      })
 
-    const reply = createMockReply(input)
-    const appMessage = await messagingApi.createMessage({
-      chatId: newChat.id,
-      text: reply.text,
-      role: reply.role,
-      ordinal: 1,
-    })
-
-    setChats((prev) => [...prev, newChat])
-    setMessages((prev) => [...prev, userMessage, appMessage])
-    setComposerText('')
-    setIsSubmitting(false)
+      setChats((prev) => [...prev, newChat])
+      setMessages((prev) => [...prev, userMessage, appMessage])
+      setComposerText('')
+    } finally {
+      setIsSubmitting(false)
+    }
   }, [composerText, chats.length])
 
   const createBranchChatFromMessage = useCallback(
@@ -169,16 +173,18 @@ export function useMessaging(): UseMessagingReturn {
       }
 
       setIsSubmitting(true)
+      try {
+        const newChat = await messagingApi.createChat({
+          title: `Branch ${chats.length + 1}`,
+          draft: '',
+          position: params.position,
+        })
 
-      const newChat = await messagingApi.createChat({
-        title: `Branch ${chats.length + 1}`,
-        draft: '',
-        position: params.position,
-      })
-
-      setChats((prev) => [...prev, newChat])
-      setIsSubmitting(false)
-      return newChat.id
+        setChats((prev) => [...prev, newChat])
+        return newChat.id
+      } finally {
+        setIsSubmitting(false)
+      }
     },
     [messages, chats.length],
   )

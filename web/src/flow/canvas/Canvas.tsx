@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   Background,
   BackgroundVariant,
-  MarkerType,
   ReactFlow,
   ReactFlowProvider,
   addEdge,
@@ -13,37 +12,46 @@ import {
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStart,
-  type NodeTypes,
   useReactFlow,
 } from '@xyflow/react'
 
-import { ChatNode } from '../../nodes/chat/ChatNode'
-import { MessageNode } from '../../nodes/message/MessageNode'
+import { nodeTypes } from '../../nodes/nodeRegistry'
+import {
+  buildContextEdgeId,
+  createContextEdge,
+  isMessageToChatConnection,
+} from '../connections/connectionsModel'
 import { Composer } from '../../ui/Composer'
 import { useMessaging } from '../messaging/useMessaging'
 
-const nodeTypes: NodeTypes = {
-  chat: ChatNode,
-  message: MessageNode,
-}
-
-function buildContextEdgeId(sourceId: string, targetId: string): string {
-  return `ctx:${sourceId}->${targetId}`
-}
-
-function createContextEdge(params: { sourceId: string; targetId: string }): Edge {
-  return {
-    id: buildContextEdgeId(params.sourceId, params.targetId),
-    source: params.sourceId,
-    target: params.targetId,
-    sourceHandle: null,
-    targetHandle: null,
-    markerEnd: { type: MarkerType.ArrowClosed },
+function getClientPointFromEvent(
+  event: MouseEvent | TouchEvent,
+): { x: number; y: number } {
+  if ('touches' in event && event.touches.length > 0) {
+    return { x: event.touches[0].clientX, y: event.touches[0].clientY }
   }
+  if ('changedTouches' in event && event.changedTouches.length > 0) {
+    return {
+      x: event.changedTouches[0].clientX,
+      y: event.changedTouches[0].clientY,
+    }
+  }
+  const mouseEvent = event as MouseEvent
+  return { x: mouseEvent.clientX, y: mouseEvent.clientY }
 }
 
 function CanvasInner() {
-  const messaging = useMessaging()
+  const {
+    nodes,
+    composerText,
+    isSubmitting,
+    setComposerText,
+    createChatFromComposer,
+    createBranchChatFromMessage,
+    updateChatPosition,
+    onNodesChange,
+    deleteNodeById,
+  } = useMessaging()
   const { screenToFlowPosition } = useReactFlow()
   const [edges, setEdges] = useState<Edge[]>([])
   const connectStartNodeIdRef = useRef<string | null>(null)
@@ -56,30 +64,21 @@ function CanvasInner() {
       )
 
       for (const node of deletedNodes) {
-        void messaging.deleteNodeById(node.id)
+        void deleteNodeById(node.id)
       }
     },
-    [messaging],
+    [deleteNodeById],
   )
 
   const sortedNodes = useMemo(() => {
-    return [...messaging.nodes].sort((a, b) => {
+    return [...nodes].sort((a, b) => {
       if (a.type === b.type) {
         return a.id.localeCompare(b.id)
       }
 
       return a.type === 'chat' ? -1 : 1
     })
-  }, [messaging.nodes])
-
-  const isMessageToChatConnection = useCallback(
-    (params: { sourceId: string; targetId: string }) => {
-      const sourceNode = messaging.nodes.find((node) => node.id === params.sourceId)
-      const targetNode = messaging.nodes.find((node) => node.id === params.targetId)
-      return sourceNode?.type === 'message' && targetNode?.type === 'chat'
-    },
-    [messaging.nodes],
-  )
+  }, [nodes])
 
   const handleConnect: OnConnect = useCallback(
     (connection: Connection) => {
@@ -87,7 +86,13 @@ function CanvasInner() {
         return
       }
 
-      if (!isMessageToChatConnection({ sourceId: connection.source, targetId: connection.target })) {
+      if (
+        !isMessageToChatConnection({
+          sourceId: connection.source,
+          targetId: connection.target,
+          nodes,
+        })
+      ) {
         return
       }
 
@@ -100,7 +105,7 @@ function CanvasInner() {
         return addEdge(createContextEdge({ sourceId: connection.source!, targetId: connection.target! }), prev)
       })
     },
-    [isMessageToChatConnection],
+    [nodes],
   )
 
   const handleConnectStart: OnConnectStart = useCallback((_event, nodeHandle) => {
@@ -116,27 +121,14 @@ function CanvasInner() {
         return
       }
 
-      const fromNode = messaging.nodes.find((node) => node.id === fromNodeId)
+      const fromNode = nodes.find((node) => node.id === fromNodeId)
       if (!fromNode || fromNode.type !== 'message') {
         return
       }
 
-      const clientPoint =
-        'touches' in event && event.touches.length > 0
-          ? { x: event.touches[0].clientX, y: event.touches[0].clientY }
-          : 'changedTouches' in event && event.changedTouches.length > 0
-            ? {
-                x: event.changedTouches[0].clientX,
-                y: event.changedTouches[0].clientY,
-              }
-            : {
-                x: (event as MouseEvent).clientX,
-                y: (event as MouseEvent).clientY,
-              }
-
-      const nextChatId = await messaging.createBranchChatFromMessage({
+      const nextChatId = await createBranchChatFromMessage({
         sourceMessageId: fromNodeId,
-        position: screenToFlowPosition(clientPoint),
+        position: screenToFlowPosition(getClientPointFromEvent(event)),
       })
 
       if (!nextChatId) {
@@ -145,15 +137,15 @@ function CanvasInner() {
 
       setEdges((prev) => addEdge(createContextEdge({ sourceId: fromNodeId, targetId: nextChatId }), prev))
     },
-    [messaging, screenToFlowPosition],
+    [createBranchChatFromMessage, nodes, screenToFlowPosition],
   )
 
   useEffect(() => {
-    const availableNodeIds = new Set(messaging.nodes.map((node) => node.id))
+    const availableNodeIds = new Set(nodes.map((node) => node.id))
     setEdges((prev) =>
       prev.filter((edge) => availableNodeIds.has(edge.source) && availableNodeIds.has(edge.target)),
     )
-  }, [messaging.nodes])
+  }, [nodes])
 
   const handleNodeDragStop: OnNodeDrag = useCallback(
     (_event, node) => {
@@ -161,9 +153,9 @@ function CanvasInner() {
         return
       }
 
-      messaging.updateChatPosition(node.id, node.position)
+      updateChatPosition(node.id, node.position)
     },
-    [messaging],
+    [updateChatPosition],
   )
 
   return (
@@ -192,7 +184,7 @@ function CanvasInner() {
             setEdges((prev) => prev.filter((edge) => !removeIds.has(edge.id)))
           }}
           nodes={sortedNodes}
-          onNodesChange={messaging.onNodesChange}
+          onNodesChange={onNodesChange}
           onNodesDelete={handleNodesDelete}
           onNodeDragStop={handleNodeDragStop}
           nodesDraggable
@@ -206,13 +198,13 @@ function CanvasInner() {
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 pb-[max(12px,env(safe-area-inset-bottom))]">
         <div className="pointer-events-auto">
           <Composer
-            disabled={messaging.isSubmitting}
-            onChange={messaging.setComposerText}
+            disabled={isSubmitting}
+            onChange={setComposerText}
             onSubmit={() => {
-              void messaging.createChatFromComposer()
+              void createChatFromComposer()
             }}
             placeholder="Create chat with first message"
-            value={messaging.composerText}
+            value={composerText}
           />
         </div>
       </div>

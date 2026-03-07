@@ -1,10 +1,10 @@
 import { Handle, Position, type NodeProps } from '@xyflow/react'
 
-import type { ChatNodeUiData } from '../../flow/types'
+import type { ChatFlowNode } from '../../flow/types'
 import { ChatCard } from './ChatCard'
 
-export function ChatNode(props: NodeProps) {
-  const data = props.data as ChatNodeUiData
+export function ChatNode(props: NodeProps<ChatFlowNode>) {
+  const { data } = props
 
   return (
     <ChatCard
