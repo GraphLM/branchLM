@@ -1,36 +1,39 @@
 import type { ReactNode } from "react";
-import { MESSAGE_WIDTH } from "../../flow/layout";
-import NodeDeleteButton from "../../ui/NodeDeleteButton";
+import { CHAT_PADDING, CHAT_WIDTH, MESSAGE_WIDTH } from "../../flow/layout";
 
 type Props = {
   role: "user" | "app";
   text: string;
   selected: boolean;
+  loading?: boolean;
   sourceHandle?: ReactNode;
-  onDelete(): void;
 };
 
 export default function MessageBubble(props: Props) {
-  const { role, text, selected, sourceHandle, onDelete } = props;
+  const { role, text, loading = false, sourceHandle } = props;
   const isUser = role === "user";
 
   return (
     <div
       className={[
-        "group flex flex-row items-center justify-between relative rounded-md border py-1 px-2 elev-1 text-sm",
+        "group relative flex flex-row items-center justify-between text-sm",
         isUser
-          ? "bg-(--msg-user-bg) border-(--msg-user-border) text-(--msg-fg)"
-          : "bg-(--msg-app-bg) border-(--msg-app-border) text-(--msg-fg)",
-        selected ? "ring-2 ring-(--selection-ring)" : "",
+          ? "rounded-xl border bg-(--msg-user-bg) border-(--msg-user-border) py-1 px-2 elev-1 text-(--msg-fg)"
+          : "bg-transparent border-0 rounded-none py-1 px-0 text-(--msg-fg)",
       ].join(" ")}
-      style={{ width: MESSAGE_WIDTH }}
+      style={{ width: isUser ? MESSAGE_WIDTH : CHAT_WIDTH - CHAT_PADDING * 2 }}
     >
-      <p className="flex-1 whitespace-pre-wrap leading-snug flex items-center">
-        {text}
-      </p>
-      <div className="flex items-center">
-        <NodeDeleteButton title="Delete message" onClick={onDelete} />
-      </div>
+      {loading && !isUser && text.length === 0 ? (
+        <div className="nodrag nopan flex flex-1 items-center gap-1 py-1 text-(--panel-muted)">
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--panel-muted)" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--panel-muted) [animation-delay:120ms]" />
+          <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-(--panel-muted) [animation-delay:240ms]" />
+        </div>
+      ) : (
+        <p className="nodrag nopan flex flex-1 cursor-text select-text items-center whitespace-pre-wrap break-words leading-snug">
+          {text}
+        </p>
+      )}
       {sourceHandle}
     </div>
   );

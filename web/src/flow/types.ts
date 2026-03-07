@@ -3,12 +3,14 @@ import type { Node } from "@xyflow/react";
 export type ChatNodeData = {
   title: string;
   draft: string;
+  focusToken?: number;
 };
 
 export type MessageNodeData = {
   text: string;
   role: "user" | "app";
   ordinal: number;
+  loading?: boolean;
 };
 
 export type ChatNode = Node<ChatNodeData, "chat">;

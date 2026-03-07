@@ -35,13 +35,8 @@ function chooseWorkspaceAfterDelete(params: {
 
 export function useCanvas(): UseCanvasResult {
   const { screenToFlowPosition, getNode, setCenter, fitView } = useReactFlow();
-  const [composerDraft, setComposerDraft] = useState("");
   const [workspaces, setWorkspaces] = useState<WorkspaceDTO[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
-
-  useEffect(() => {
-    setComposerDraft("");
-  }, [selectedWorkspaceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,8 +79,6 @@ export function useCanvas(): UseCanvasResult {
   const messaging = useMessaging({
     workspaceId: selectedWorkspaceId ?? "",
     nodes: graph.nodes,
-    composerDraft,
-    setComposerDraft,
     setNodes: graph.setNodes,
     screenToFlowPosition,
   });
@@ -167,18 +160,26 @@ export function useCanvas(): UseCanvasResult {
     ],
   );
 
+  const selectedChat = useMemo(
+    () => graph.nodes.find((n) => n.type === "chat" && n.selected),
+    [graph.nodes],
+  );
+  const toolbarPrimaryMode: "send" | "new-chat" =
+    selectedChat && selectedChat.type === "chat" && selectedChat.data.draft.trim().length > 0
+      ? "send"
+      : "new-chat";
+
   return {
     nodes: graph.nodes,
     renderedEdges: graph.renderedEdges,
-    composerDraft,
     selectedWorkspaceId,
     workspacesForPanel: workspaces,
     panelOpen: panel.panelOpen,
     chatsForPanel: panel.chatsForPanel,
     isLocked: graph.isLocked,
+    toolbarPrimaryMode,
     actions,
     nodeTypes: panel.nodeTypes,
-    setComposerDraft,
     onNodesChange: graph.onNodesChange,
     onEdgesChange: graph.onEdgesChange,
     onConnect: connections.onConnect,
@@ -198,9 +199,17 @@ export function useCanvas(): UseCanvasResult {
     onWorkspaceCreate,
     onWorkspaceRename,
     onWorkspaceDelete,
-    sendComposerMessage: () => {
+    onToolbarPrimaryAction: () => {
       if (!selectedWorkspaceId) return;
-      void messaging.sendComposerMessage();
+      if (selectedChat?.type === "chat" && selectedChat.data.draft.trim().length > 0) {
+        void messaging.sendChatMessage(selectedChat.id);
+        return;
+      }
+      if (selectedChat?.type === "chat") {
+        messaging.focusChatDraft(selectedChat.id);
+        return;
+      }
+      void messaging.createChatDraft();
     },
   };
 }
