@@ -3,6 +3,7 @@ import type { FormEvent, ReactNode } from 'react'
 
 import { NodeDeleteButton } from '../../ui/NodeDeleteButton'
 import { SendButton } from '../../ui/SendButton'
+import { composeButtonClass } from '../../ui/buttonStyles'
 
 type ChatCardProps = {
   chatId: string
@@ -66,7 +67,10 @@ export function ChatCard({
           />
         ) : (
           <button
-            className="rounded-full border border-[color:var(--color-panel-border)] bg-[color:var(--color-canvas-base)]/95 px-3 py-1 text-xs font-semibold tracking-wide text-[color:var(--color-text-primary)] shadow-[0_6px_18px_var(--color-chat-shadow)]"
+            className={composeButtonClass({
+              variant: 'primary',
+              size: 'chip',
+            })}
             onClick={() => setIsEditingTitle(true)}
             type="button"
           >

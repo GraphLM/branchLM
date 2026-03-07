@@ -1,5 +1,4 @@
 import type { Edge } from '@xyflow/react'
-
 import { apiFetch } from '../../lib/api'
 import type { ChatRecord } from '../types'
 
