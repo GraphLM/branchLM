@@ -13,9 +13,28 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "ruff>=0.8",
+    "bandit[toml]>=1.7",
+    "pip-audit>=2.7",
     "pytest>=8",
     "httpx>=0.27",
 ]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+exclude = [".venv", ".venv-check", "__pycache__", "*.egg-info"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "C4", "S"]
+ignore = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.bandit]
+exclude_dirs = [".venv", ".venv-check"]
+skips = ["B101"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
