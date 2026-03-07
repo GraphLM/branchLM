@@ -1,6 +1,7 @@
--- Schema for branchLM graph + chat backend.
--- Run in the Supabase SQL editor if tables do not exist.
+-- Minimal schema to support web/src/flow/FlowCanvas.tsx
+-- Run this in Supabase SQL editor.
 
+-- Enable UUID generation
 create extension if not exists "pgcrypto";
 
 create table if not exists public.chats (
@@ -40,3 +41,5 @@ create table if not exists public.context_edges (
 
 create index if not exists context_edges_user_id_idx on public.context_edges (user_id);
 create index if not exists context_edges_to_chat_id_idx on public.context_edges (to_chat_id);
+
+-- NOTE: for a real app, enable RLS and replace `user_id` with auth.uid().

@@ -14,29 +14,29 @@ def get_graph(*, user_id: str, store: Store) -> dict[str, Any]:
     return {
         "chats": [
             {
-                "id": chat["id"],
-                "title": chat["title"],
-                "position": {"x": chat["position_x"], "y": chat["position_y"]},
+                "id": c["id"],
+                "title": c["title"],
+                "position": {"x": c["position_x"], "y": c["position_y"]},
             }
-            for chat in chats
+            for c in chats
         ],
         "messages": [
             {
-                "id": message["id"],
-                "chatId": message["chat_id"],
-                "ordinal": message["ordinal"],
-                "role": message["role"],
-                "text": message["text"],
+                "id": m["id"],
+                "chatId": m["chat_id"],
+                "ordinal": m["ordinal"],
+                "role": m["role"],
+                "text": m["text"],
             }
-            for message in messages
+            for m in messages
         ],
         "contextEdges": [
             {
-                "fromMessageId": edge["from_message_id"],
-                "toChatId": edge["to_chat_id"],
-                "rank": edge["rank"],
+                "fromMessageId": e["from_message_id"],
+                "toChatId": e["to_chat_id"],
+                "rank": e["rank"],
             }
-            for edge in edges
+            for e in edges
         ],
     }
 
@@ -51,10 +51,10 @@ def put_graph_layout(*, user_id: str, body: GraphLayoutPutBody, store: Store) ->
         user_id,
         [
             {
-                "from_message_id": edge.fromMessageId,
-                "to_chat_id": edge.toChatId,
-                "rank": edge.rank,
+                "from_message_id": e.fromMessageId,
+                "to_chat_id": e.toChatId,
+                "rank": e.rank,
             }
-            for edge in body.contextEdges
+            for e in body.contextEdges
         ],
     )

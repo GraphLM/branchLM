@@ -6,6 +6,15 @@ from uuid import uuid4
 
 
 class MemoryStore:
+    """
+    Simple in-memory persistence for first boot/tests.
+
+    Row shapes intentionally match what Supabase returns / what the service expects:
+    - chats: {id, user_id, title, position_x, position_y, created_at, updated_at}
+    - messages: {id, user_id, chat_id, ordinal, role, text, created_at}
+    - context_edges: {id, user_id, from_message_id, to_chat_id, rank, created_at}
+    """
+
     def __init__(self) -> None:
         self._chats: dict[str, dict[str, Any]] = {}
         self._messages: dict[str, dict[str, Any]] = {}
@@ -16,27 +25,27 @@ class MemoryStore:
         return "memory"
 
     def list_chats(self, user_id: str) -> list[dict[str, Any]]:
-        chats = [chat for chat in self._chats.values() if chat["user_id"] == user_id]
-        chats.sort(key=lambda row: row["created_at"])
+        chats = [c for c in self._chats.values() if c["user_id"] == user_id]
+        chats.sort(key=lambda r: r["created_at"])
         return chats
 
     def list_messages(self, user_id: str) -> list[dict[str, Any]]:
-        messages = [message for message in self._messages.values() if message["user_id"] == user_id]
-        messages.sort(key=lambda row: (row["chat_id"], row["ordinal"]))
+        messages = [m for m in self._messages.values() if m["user_id"] == user_id]
+        messages.sort(key=lambda r: (r["chat_id"], r["ordinal"]))
         return messages
 
     def list_messages_for_chat(self, user_id: str, chat_id: str) -> list[dict[str, Any]]:
         messages = [
-            message
-            for message in self._messages.values()
-            if message["user_id"] == user_id and message["chat_id"] == chat_id
+            m
+            for m in self._messages.values()
+            if m["user_id"] == user_id and m["chat_id"] == chat_id
         ]
-        messages.sort(key=lambda row: row["ordinal"])
+        messages.sort(key=lambda r: r["ordinal"])
         return messages
 
     def list_context_edges(self, user_id: str) -> list[dict[str, Any]]:
-        edges = [edge for edge in self._edges.values() if edge["user_id"] == user_id]
-        edges.sort(key=lambda row: row["rank"])
+        edges = [e for e in self._edges.values() if e["user_id"] == user_id]
+        edges.sort(key=lambda r: r["rank"])
         return edges
 
     def create_chat(
@@ -56,38 +65,38 @@ class MemoryStore:
         return {"id": chat_id, "title": title}
 
     def update_chat_title(self, user_id: str, chat_id: str, title: str) -> None:
-        chat = self._chats.get(chat_id)
-        if chat and chat["user_id"] == user_id:
-            chat["title"] = title
-            chat["updated_at"] = datetime.now(timezone.utc).isoformat()
+        c = self._chats.get(chat_id)
+        if c and c["user_id"] == user_id:
+            c["title"] = title
+            c["updated_at"] = datetime.now(timezone.utc).isoformat()
 
     def delete_chat(self, user_id: str, chat_id: str) -> None:
-        chat = self._chats.get(chat_id)
-        if not chat or chat["user_id"] != user_id:
+        c = self._chats.get(chat_id)
+        if not c or c["user_id"] != user_id:
             return
         del self._chats[chat_id]
 
         removed_message_ids = {
-            message_id
-            for message_id, message in self._messages.items()
-            if message["chat_id"] == chat_id and message["user_id"] == user_id
+            mid
+            for mid, m in self._messages.items()
+            if m["chat_id"] == chat_id and m["user_id"] == user_id
         }
-        for message_id in removed_message_ids:
-            del self._messages[message_id]
+        for mid in removed_message_ids:
+            del self._messages[mid]
 
-        for edge_id, edge in list(self._edges.items()):
-            if edge["user_id"] != user_id:
+        for eid, e in list(self._edges.items()):
+            if e["user_id"] != user_id:
                 continue
-            if edge["to_chat_id"] == chat_id or edge["from_message_id"] in removed_message_ids:
-                del self._edges[edge_id]
+            if e["to_chat_id"] == chat_id or e["from_message_id"] in removed_message_ids:
+                del self._edges[eid]
 
     def create_message(self, user_id: str, chat_id: str, role: str, text: str) -> dict[str, Any]:
-        ordinals = [
-            message["ordinal"]
-            for message in self._messages.values()
-            if message["user_id"] == user_id and message["chat_id"] == chat_id
+        ords = [
+            m["ordinal"]
+            for m in self._messages.values()
+            if m["user_id"] == user_id and m["chat_id"] == chat_id
         ]
-        next_ordinal = (max(ordinals) + 1) if ordinals else 0
+        next_ordinal = (max(ords) + 1) if ords else 0
 
         message_id = str(uuid4())
         now = datetime.now(timezone.utc).isoformat()
@@ -103,39 +112,40 @@ class MemoryStore:
         return {"id": message_id, "ordinal": next_ordinal}
 
     def delete_message(self, user_id: str, message_id: str) -> None:
-        message = self._messages.get(message_id)
-        if not message or message["user_id"] != user_id:
+        m = self._messages.get(message_id)
+        if not m or m["user_id"] != user_id:
             return
         del self._messages[message_id]
 
-        for edge_id, edge in list(self._edges.items()):
-            if edge["user_id"] == user_id and edge["from_message_id"] == message_id:
-                del self._edges[edge_id]
+        for eid, e in list(self._edges.items()):
+            if e["user_id"] == user_id and e["from_message_id"] == message_id:
+                del self._edges[eid]
 
     def update_chat_positions(
         self, user_id: str, positions: dict[str, tuple[float, float]]
     ) -> None:
         now = datetime.now(timezone.utc).isoformat()
         for chat_id, (x, y) in positions.items():
-            chat = self._chats.get(chat_id)
-            if chat and chat["user_id"] == user_id:
-                chat["position_x"] = x
-                chat["position_y"] = y
-                chat["updated_at"] = now
+            c = self._chats.get(chat_id)
+            if c and c["user_id"] == user_id:
+                c["position_x"] = x
+                c["position_y"] = y
+                c["updated_at"] = now
 
     def replace_context_edges(self, user_id: str, edges: list[dict[str, Any]]) -> None:
+        # Replace context edges for this user (simple + deterministic).
         for edge_id, edge in list(self._edges.items()):
             if edge["user_id"] == user_id:
                 del self._edges[edge_id]
 
         now = datetime.now(timezone.utc).isoformat()
-        for edge in edges:
+        for e in edges:
             edge_id = str(uuid4())
             self._edges[edge_id] = {
                 "id": edge_id,
                 "user_id": user_id,
-                "from_message_id": edge["from_message_id"],
-                "to_chat_id": edge["to_chat_id"],
-                "rank": edge["rank"],
+                "from_message_id": e["from_message_id"],
+                "to_chat_id": e["to_chat_id"],
+                "rank": e["rank"],
                 "created_at": now,
             }
