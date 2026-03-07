@@ -18,7 +18,7 @@ def create_app() -> FastAPI:
     load_dotenv(dotenv_path=env_path)
 
     settings = Settings.from_env()
-    app = FastAPI(title="branchLM API", version="0.1.0")
+    app = FastAPI(title="graphLM API", version="0.0.0")
     app.state.settings = settings
 
     # Store selection: Supabase when configured, otherwise in-memory fallback.
