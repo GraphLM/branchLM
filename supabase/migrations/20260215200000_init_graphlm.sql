@@ -1,4 +1,4 @@
--- Initial schema for branchLM (multi-workspace)
+-- Initial schema for branchLM (multi-workspace), including chat model and context snapshots.
 
 create extension if not exists "pgcrypto";
 
