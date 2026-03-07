@@ -17,6 +17,7 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
                 "id": c["id"],
                 "workspaceId": c["workspace_id"],
                 "title": c["title"],
+                "model": c.get("model"),
                 "position": {"x": c["position_x"], "y": c["position_y"]},
             }
             for c in chats

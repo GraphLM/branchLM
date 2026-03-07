@@ -42,6 +42,7 @@ def generate_chat_reply(
         llm_client=request.app.state.llm_client,
         rate_limiter=request.app.state.rate_limiter,
         settings=request.app.state.settings,
+        metrics=request.app.state.metrics,
     )
     client_host = request.client.host if request.client else "unknown"
     return service.generate_chat_reply(
