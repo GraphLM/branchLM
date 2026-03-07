@@ -40,3 +40,29 @@ export async function createMessage(params: {
   if (!res.ok) return null;
   return (await res.json()) as { id: string; ordinal: number };
 }
+
+export async function generateReply(params: {
+  workspaceId: string;
+  chatId: string;
+  text: string;
+}): Promise<
+  | {
+      userMessage: { id: string; chatId: string; ordinal: number; role: "user"; text: string };
+      appMessage: { id: string; chatId: string; ordinal: number; role: "app"; text: string };
+    }
+  | null
+> {
+  const res = await apiFetch(
+    `/api/workspaces/${params.workspaceId}/chats/${params.chatId}/generate`,
+    {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ text: params.text }),
+    },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as {
+    userMessage: { id: string; chatId: string; ordinal: number; role: "user"; text: string };
+    appMessage: { id: string; chatId: string; ordinal: number; role: "app"; text: string };
+  };
+}

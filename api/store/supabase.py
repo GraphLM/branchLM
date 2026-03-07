@@ -29,11 +29,33 @@ class SupabaseStore:
         client = create_client(settings.supabase_url, settings.supabase_service_role_key)
         return cls.from_client(client)
 
+    @staticmethod
+    def _postgrest_error_payload(error: PostgrestAPIError) -> dict[str, Any]:
+        payload: Any = getattr(error, "json", None)
+        if callable(payload):
+            try:
+                payload = payload()
+            except Exception:
+                payload = None
+        if isinstance(payload, dict):
+            return payload
+
+        if error.args:
+            arg0 = error.args[0]
+            if isinstance(arg0, dict):
+                return arg0
+            if isinstance(arg0, str):
+                return {"message": arg0}
+
+        return {}
+
     def _wrap_postgrest(self, op: str, fn: Callable[[], Any]) -> Any:
         try:
             return fn()
         except PostgrestAPIError as e:
-            code = (e.json or {}).get("code")
+            payload = self._postgrest_error_payload(e)
+            code = payload.get("code")
+            message = str(payload.get("message") or "")
             if code == "PGRST205":
                 raise HTTPException(
                     status_code=500,
@@ -42,9 +64,17 @@ class SupabaseStore:
                         "(you may need to reload the API schema cache)."
                     ),
                 ) from e
+            if code == 401 or code == "401" or "invalid api key" in message.lower():
+                raise HTTPException(
+                    status_code=503,
+                    detail=(
+                        "Supabase credentials are invalid. Ensure `SUPABASE_URL` and "
+                        "`SUPABASE_SERVICE_ROLE_KEY` come from the same Supabase project."
+                    ),
+                ) from e
             raise HTTPException(
                 status_code=500,
-                detail=f"Supabase error during {op}: {e.json}",
+                detail=f"Supabase error during {op}: {payload or str(e)}",
             ) from e
         except httpx.TimeoutException as e:
             raise HTTPException(
