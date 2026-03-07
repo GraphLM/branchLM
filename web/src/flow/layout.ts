@@ -130,6 +130,7 @@ export function createMessageNode(params: {
   indexInChat: number;
   role: "user" | "app";
   text: string;
+  loading?: boolean;
 }): MessageNode {
   const position = getMessagePosition({
     indexInChat: params.indexInChat,
@@ -142,7 +143,12 @@ export function createMessageNode(params: {
     parentId: params.chatId,
     extent: "parent",
     position,
-    data: { text: params.text, role: params.role, ordinal: params.indexInChat },
+    data: {
+      text: params.text,
+      role: params.role,
+      ordinal: params.indexInChat,
+      loading: params.loading,
+    },
     draggable: false,
     zIndex: 1,
   };

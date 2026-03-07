@@ -10,6 +10,7 @@ export type MessageNodeData = {
   text: string;
   role: "user" | "app";
   ordinal: number;
+  loading?: boolean;
 };
 
 export type ChatNode = Node<ChatNodeData, "chat">;

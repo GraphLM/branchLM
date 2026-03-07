@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { applyAutoLayout } from "../graph/graphModel";
-import type { AppNode } from "../types";
+import type { AppNode, MessageNode as MessageFlowNode } from "../types";
 import { makeChatNode, makeMessageNode } from "./messagingModel";
 import {
   createChat,
@@ -50,24 +50,94 @@ export function useMessaging(params: {
       const text = chat.data.draft.trim();
       if (!text) return;
 
+      const nextOrdinal =
+        params.nodes
+          .filter(
+            (n): n is MessageFlowNode => n.type === "message" && n.parentId === chatId,
+          )
+          .reduce((max, n) => Math.max(max, n.data.ordinal), -1) + 1;
+
+      const tempUserId = `temp-user-${chatId}-${Date.now()}`;
+      const tempAppId = `temp-app-${chatId}-${Date.now()}`;
+      const optimisticUser = makeMessageNode({
+        id: tempUserId,
+        chatId,
+        indexInChat: nextOrdinal,
+        role: "user",
+        text,
+      });
+      const optimisticApp = makeMessageNode({
+        id: tempAppId,
+        chatId,
+        indexInChat: nextOrdinal + 1,
+        role: "app",
+        text: "",
+        loading: true,
+      });
+
       params.setNodes((ns) =>
         applyAutoLayout(
-          ns.map((n) =>
-            n.id === chatId && n.type === "chat" ? { ...n, data: { ...n.data, draft: "" } } : n,
-          ),
+          ns
+            .map((n) =>
+              n.id === chatId && n.type === "chat" ? { ...n, data: { ...n.data, draft: "" } } : n,
+            )
+            .concat(optimisticUser, optimisticApp),
         ),
       );
 
       const generated = await generateReply({ workspaceId: params.workspaceId, chatId, text });
-      if (!generated) return;
+      if (!generated) {
+        params.setNodes((ns) =>
+          applyAutoLayout(
+            ns
+              .filter((n) => n.id !== tempUserId && n.id !== tempAppId)
+              .map((n) =>
+                n.id === chatId && n.type === "chat"
+                  ? { ...n, data: { ...n.data, draft: n.data.draft.length ? n.data.draft : text } }
+                  : n,
+              ),
+          ),
+        );
+        return;
+      }
+      params.setNodes((ns) =>
+        applyAutoLayout(
+          ns.map((n) =>
+            n.id === tempUserId && n.type === "message"
+              ? {
+                  ...n,
+                  id: generated.userMessage.id,
+                  data: {
+                    ...n.data,
+                    ordinal: generated.userMessage.ordinal,
+                    text: generated.userMessage.text,
+                  },
+                }
+              : n,
+          ),
+        ),
+      );
 
-      const userMessage = makeMessageNode({
-        id: generated.userMessage.id,
-        chatId,
-        indexInChat: generated.userMessage.ordinal,
-        role: "user",
-        text: generated.userMessage.text,
-      });
+      const fullReply = generated.appMessage.text;
+      let streamedReply = "";
+      for (let i = 0; i < fullReply.length; ) {
+        const chunkSize = Math.min(fullReply.length - i, Math.floor(Math.random() * 3) + 1);
+        streamedReply += fullReply.slice(i, i + chunkSize);
+        i += chunkSize;
+
+        params.setNodes((ns) =>
+          applyAutoLayout(
+            ns.map((n) =>
+              n.id === tempAppId && n.type === "message"
+                ? { ...n, data: { ...n.data, text: streamedReply, loading: i < fullReply.length } }
+                : n,
+            ),
+          ),
+        );
+
+        await new Promise((resolve) => window.setTimeout(resolve, 22));
+      }
+
       const appMessage = makeMessageNode({
         id: generated.appMessage.id,
         chatId,
@@ -75,8 +145,9 @@ export function useMessaging(params: {
         role: "app",
         text: generated.appMessage.text,
       });
-
-      params.setNodes((ns) => applyAutoLayout(ns.concat(userMessage, appMessage)));
+      params.setNodes((ns) =>
+        applyAutoLayout(ns.filter((n) => n.id !== tempAppId).concat(appMessage)),
+      );
     },
     [params],
   );

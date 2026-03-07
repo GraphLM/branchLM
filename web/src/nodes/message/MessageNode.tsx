@@ -20,6 +20,7 @@ export default function MessageNodeComponent(
       role={data.role}
       text={data.text}
       selected={selected}
+      loading={data.loading}
       sourceHandle={
         <Handle
           type="source"

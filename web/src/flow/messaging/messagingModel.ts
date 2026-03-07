@@ -14,6 +14,7 @@ export function makeMessageNode(params: {
   indexInChat: number;
   role: "user" | "app";
   text: string;
+  loading?: boolean;
 }) {
   return createMessageNode(params);
 }
