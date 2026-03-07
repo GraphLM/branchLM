@@ -8,7 +8,7 @@ type Props = {
 };
 
 const buttonBase =
-  "group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)";
+  "group relative flex items-center justify-center rounded-lg border border-transparent bg-transparent p-2 transition-colors hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)";
 
 export default function CanvasToolbar({ onAutoLayout, locked, onLockToggle }: Props) {
   const { zoomIn, zoomOut, fitView } = useReactFlow();

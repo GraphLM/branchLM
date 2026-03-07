@@ -17,7 +17,7 @@ export default function MessageBubble(props: Props) {
   return (
     <div
       className={[
-        "group flex flex-row items-center justify-between relative rounded-md border py-1 px-2 elev-1 text-sm",
+        "group flex flex-row items-center justify-between relative rounded-xl border py-1 px-2 elev-1 text-sm",
         isUser
           ? "bg-(--msg-user-bg) border-(--msg-user-border) text-(--msg-fg)"
           : "bg-(--msg-app-bg) border-(--msg-app-border) text-(--msg-fg)",

@@ -22,7 +22,7 @@ export default function Composer(props: Props) {
     <div className="fixed bottom-6 left-1/2 w-full max-w-xl px-3 -translate-x-1/2">
       <div className="flex gap-2">
         <input
-          className="flex-1 rounded-md border border-(--control-border) bg-(--control-bg) px-3 py-2 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+          className="flex-1 rounded-xl border border-(--control-border) bg-(--control-bg) px-3 py-2 text-sm text-(--control-fg) placeholder:text-(--control-placeholder) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
           value={props.value}
           onChange={(e) => props.onChange(e.target.value)}
           onKeyDown={onKeyDown}

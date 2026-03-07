@@ -59,7 +59,7 @@ export default function Panel(props: Props) {
       {!open ? (
         <button
           type="button"
-          className="group relative flex items-center justify-center rounded-md border border-transparent bg-transparent p-2 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
+          className="group relative flex items-center justify-center rounded-lg border border-transparent bg-transparent p-2 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
           aria-label="Open panel"
           title="Open panel"
           onMouseDown={(e) => {
@@ -73,13 +73,13 @@ export default function Panel(props: Props) {
           <Menu size={16} className="text-(--panel-muted) group-hover:text-(--panel-fg)" />
         </button>
       ) : (
-        <aside className="w-72 overflow-hidden rounded-md border border-(--panel-border) bg-(--panel-bg)! text-(--panel-fg) elev-3 backdrop-blur">
+        <aside className="w-72 overflow-hidden rounded-2xl border border-(--panel-border) bg-(--panel-bg)! text-(--panel-fg) elev-3 backdrop-blur">
           <div className="flex max-h-[calc(100vh-2rem)] flex-col">
             <div className="flex items-center justify-between border-b border-(--panel-border) px-3 py-2">
               <div className="text-sm font-medium">Navigation</div>
               <button
                 type="button"
-                className="rounded-md border border-transparent p-1 hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) hover:cursor-pointer"
+                className="rounded-lg border border-transparent p-1 hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) hover:cursor-pointer"
                 aria-label="Close panel"
                 title="Close panel"
                 onClick={() => {
@@ -116,7 +116,7 @@ export default function Panel(props: Props) {
                       return (
                         <li key={workspace.id}>
                           <div
-                            className={`flex items-center gap-1 rounded-md border px-2 py-1 ${
+                            className={`flex items-center gap-1 rounded-xl border px-2 py-1 ${
                               isSelected
                                 ? "border-(--control-border-hover) bg-(--control-bg-hover)"
                                 : "border-transparent"
@@ -166,7 +166,7 @@ export default function Panel(props: Props) {
                       <li key={chat.id}>
                         <button
                           type="button"
-                          className="w-full rounded-md border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                          className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
                           title={chat.title}
                           onMouseEnter={() => onNodeHover(chat.id)}
                           onMouseLeave={() => onNodeHoverEnd()}
