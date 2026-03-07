@@ -9,6 +9,7 @@ import {
   type Connection,
   type Edge,
   type Node,
+  type OnNodeDrag,
   type OnConnect,
   type OnConnectEnd,
   type OnConnectStart,
@@ -154,6 +155,17 @@ function CanvasInner() {
     )
   }, [messaging.nodes])
 
+  const handleNodeDragStop: OnNodeDrag = useCallback(
+    (_event, node) => {
+      if (node.type !== 'chat') {
+        return
+      }
+
+      messaging.updateChatPosition(node.id, node.position)
+    },
+    [messaging],
+  )
+
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-[radial-gradient(circle_at_12%_8%,var(--color-canvas-accent),var(--color-canvas-base)_55%)] text-[color:var(--color-text-primary)]">
       <div className="h-full w-full">
@@ -180,7 +192,10 @@ function CanvasInner() {
             setEdges((prev) => prev.filter((edge) => !removeIds.has(edge.id)))
           }}
           nodes={sortedNodes}
+          onNodesChange={messaging.onNodesChange}
           onNodesDelete={handleNodesDelete}
+          onNodeDragStop={handleNodeDragStop}
+          nodesDraggable
           panOnDrag
           proOptions={{ hideAttribution: true }}
         >

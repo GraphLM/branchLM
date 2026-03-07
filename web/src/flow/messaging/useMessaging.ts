@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react'
-import type { XYPosition } from '@xyflow/react'
+import { type OnNodesChange, type XYPosition } from '@xyflow/react'
 
 import {
   computeChatPosition,
@@ -20,6 +20,8 @@ type UseMessagingReturn = {
     sourceMessageId: string
     position: XYPosition
   }) => Promise<string | null>
+  updateChatPosition: (chatId: string, position: XYPosition) => void
+  onNodesChange: OnNodesChange<FlowNode>
   deleteNodeById: (nodeId: string) => Promise<void>
 }
 
@@ -52,6 +54,12 @@ export function useMessaging(): UseMessagingReturn {
   const updateChatDraft = useCallback((chatId: string, draft: string) => {
     setChats((prev) => prev.map((chat) => (chat.id === chatId ? { ...chat, draft } : chat)))
     void messagingApi.updateChat(chatId, { draft })
+  }, [])
+
+  const updateChatPosition = useCallback((chatId: string, position: XYPosition) => {
+    setChats((prev) =>
+      prev.map((chat) => (chat.id === chatId ? { ...chat, position } : chat)),
+    )
   }, [])
 
   const deleteChat = useCallback(async (chatId: string) => {
@@ -234,6 +242,39 @@ export function useMessaging(): UseMessagingReturn {
     [chats, messages, deleteChat, deleteMessage],
   )
 
+  const onNodesChange: OnNodesChange<FlowNode> = useCallback((changes) => {
+    setChats((prevChats) => {
+      const chatIds = new Set(prevChats.map((chat) => chat.id))
+      const positionByChatId = new Map<string, XYPosition>()
+
+      for (const change of changes) {
+        if (change.type !== 'position') {
+          continue
+        }
+
+        if (!chatIds.has(change.id)) {
+          continue
+        }
+
+        const nextPosition = change.position ?? change.positionAbsolute
+        if (!nextPosition) {
+          continue
+        }
+
+        positionByChatId.set(change.id, nextPosition)
+      }
+
+      if (positionByChatId.size === 0) {
+        return prevChats
+      }
+
+      return prevChats.map((chat) => ({
+        ...chat,
+        position: positionByChatId.get(chat.id) ?? chat.position,
+      }))
+    })
+  }, [])
+
   return {
     nodes,
     composerText,
@@ -241,6 +282,8 @@ export function useMessaging(): UseMessagingReturn {
     setComposerText,
     createChatFromComposer,
     createBranchChatFromMessage,
+    updateChatPosition,
+    onNodesChange,
     deleteNodeById,
   }
 }
