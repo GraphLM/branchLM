@@ -30,12 +30,18 @@ export default function Canvas({ onLogout }: Props) {
 
         <Panel
           open={canvas.panelOpen}
+          workspaces={canvas.workspacesForPanel}
+          selectedWorkspaceId={canvas.selectedWorkspaceId}
           chats={canvas.chatsForPanel}
           onOpen={canvas.onPanelOpen}
           onClose={canvas.onPanelClose}
           onNodeHover={canvas.onPanelNodeHover}
           onNodeHoverEnd={canvas.onPanelNodeHoverEnd}
           onNodeClick={canvas.onPanelNodeClick}
+          onWorkspaceSelect={canvas.onWorkspaceSelect}
+          onWorkspaceCreate={canvas.onWorkspaceCreate}
+          onWorkspaceRename={canvas.onWorkspaceRename}
+          onWorkspaceDelete={canvas.onWorkspaceDelete}
         />
 
         <ReactFlow
@@ -92,7 +98,7 @@ export default function Canvas({ onLogout }: Props) {
           value={canvas.composerDraft}
           onChange={canvas.setComposerDraft}
           onSend={canvas.sendComposerMessage}
-          sendDisabled={canvas.composerDraft.trim().length === 0}
+          sendDisabled={!canvas.selectedWorkspaceId || canvas.composerDraft.trim().length === 0}
         />
       </FlowActionsProvider>
     </div>

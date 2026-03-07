@@ -1,11 +1,26 @@
--- Initial schema for branchLM (used by web/src/flow/FlowCanvas.tsx)
+-- Initial schema for branchLM (multi-workspace)
 
--- Enable UUID generation
 create extension if not exists "pgcrypto";
+
+drop table if exists public.context_edges;
+drop table if exists public.messages;
+drop table if exists public.chats;
+drop table if exists public.workspaces;
+
+create table if not exists public.workspaces (
+  id uuid primary key default gen_random_uuid(),
+  user_id text not null,
+  title text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists workspaces_user_id_idx on public.workspaces (user_id);
 
 create table if not exists public.chats (
   id uuid primary key default gen_random_uuid(),
   user_id text not null,
+  workspace_id uuid not null references public.workspaces(id) on delete cascade,
   title text not null,
   position_x double precision not null default 0,
   position_y double precision not null default 0,
@@ -13,7 +28,7 @@ create table if not exists public.chats (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists chats_user_id_idx on public.chats (user_id);
+create index if not exists chats_user_id_workspace_id_idx on public.chats (user_id, workspace_id);
 
 create table if not exists public.messages (
   id uuid primary key default gen_random_uuid(),

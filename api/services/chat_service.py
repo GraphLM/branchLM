@@ -4,25 +4,62 @@ from typing import Any
 
 from fastapi import HTTPException
 
-from schemas import CreateChatBody, CreateMessageBody, GenerateReplyBody, PatchChatBody
+from schemas import (
+    CreateChatBody,
+    CreateMessageBody,
+    CreateWorkspaceBody,
+    GenerateReplyBody,
+    PatchChatBody,
+    PatchWorkspaceBody,
+)
 from services.llm_service import LLMConfigurationError, LLMServiceError, OpenRouterClient
 from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
 from store.base import Store
 
 
+class WorkspaceService:
+    def __init__(self, store: Store) -> None:
+        self._store = store
+
+    def list_workspaces(self, *, user_id: str) -> list[dict[str, Any]]:
+        return [
+            {"id": workspace["id"], "title": workspace["title"]}
+            for workspace in self._store.list_workspaces(user_id)
+        ]
+
+    def create_workspace(self, *, user_id: str, body: CreateWorkspaceBody) -> dict[str, Any]:
+        return self._store.create_workspace(user_id, body.title)
+
+    def patch_workspace(
+        self, *, user_id: str, workspace_id: str, body: PatchWorkspaceBody
+    ) -> None:
+        self._store.update_workspace_title(user_id, workspace_id, body.title)
+
+    def delete_workspace(self, *, user_id: str, workspace_id: str) -> None:
+        self._store.delete_workspace(user_id, workspace_id)
+
+
 class ChatService:
     def __init__(self, store: Store) -> None:
         self._store = store
 
-    def create_chat(self, *, user_id: str, body: CreateChatBody) -> dict[str, Any]:
-        return self._store.create_chat(user_id, body.title, body.position.x, body.position.y)
+    def create_chat(self, *, user_id: str, workspace_id: str, body: CreateChatBody) -> dict[str, Any]:
+        return self._store.create_chat(
+            user_id,
+            workspace_id,
+            body.title,
+            body.position.x,
+            body.position.y,
+        )
 
-    def patch_chat(self, *, user_id: str, chat_id: str, body: PatchChatBody) -> None:
-        self._store.update_chat_title(user_id, chat_id, body.title)
+    def patch_chat(
+        self, *, user_id: str, workspace_id: str, chat_id: str, body: PatchChatBody
+    ) -> None:
+        self._store.update_chat_title(user_id, workspace_id, chat_id, body.title)
 
-    def delete_chat(self, *, user_id: str, chat_id: str) -> None:
-        self._store.delete_chat(user_id, chat_id)
+    def delete_chat(self, *, user_id: str, workspace_id: str, chat_id: str) -> None:
+        self._store.delete_chat(user_id, workspace_id, chat_id)
 
 
 class MessageService:
@@ -30,12 +67,12 @@ class MessageService:
         self._store = store
 
     def create_message(
-        self, *, user_id: str, chat_id: str, body: CreateMessageBody
+        self, *, user_id: str, workspace_id: str, chat_id: str, body: CreateMessageBody
     ) -> dict[str, Any]:
-        return self._store.create_message(user_id, chat_id, body.role, body.text)
+        return self._store.create_message(user_id, workspace_id, chat_id, body.role, body.text)
 
-    def delete_message(self, *, user_id: str, message_id: str) -> None:
-        self._store.delete_message(user_id, message_id)
+    def delete_message(self, *, user_id: str, workspace_id: str, message_id: str) -> None:
+        self._store.delete_message(user_id, workspace_id, message_id)
 
 
 class ChatGenerationService:
@@ -56,20 +93,26 @@ class ChatGenerationService:
         self,
         *,
         user_id: str,
+        workspace_id: str,
         chat_id: str,
         body: GenerateReplyBody,
         client_ip: str,
     ) -> dict[str, Any]:
-        self._ensure_chat_exists(user_id=user_id, chat_id=chat_id)
+        self._ensure_chat_exists(user_id=user_id, workspace_id=workspace_id, chat_id=chat_id)
 
         prompt = self._validate_prompt(body.text)
         self._enforce_rate_limit(user_id=user_id, client_ip=client_ip)
 
-        conversation = self._build_conversation(user_id=user_id, chat_id=chat_id, prompt=prompt)
+        conversation = self._build_conversation(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat_id,
+            prompt=prompt,
+        )
         reply_text = self._call_llm(conversation)
 
-        user_message = self._store.create_message(user_id, chat_id, "user", prompt)
-        app_message = self._store.create_message(user_id, chat_id, "app", reply_text)
+        user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
+        app_message = self._store.create_message(user_id, workspace_id, chat_id, "app", reply_text)
 
         return {
             "userMessage": {
@@ -88,8 +131,8 @@ class ChatGenerationService:
             },
         }
 
-    def _ensure_chat_exists(self, *, user_id: str, chat_id: str) -> None:
-        if not any(chat["id"] == chat_id for chat in self._store.list_chats(user_id)):
+    def _ensure_chat_exists(self, *, user_id: str, workspace_id: str, chat_id: str) -> None:
+        if not self._store.chat_exists(user_id, workspace_id, chat_id):
             raise HTTPException(status_code=404, detail="Chat not found")
 
     def _validate_prompt(self, text: str) -> str:
@@ -115,9 +158,9 @@ class ChatGenerationService:
         )
 
     def _build_conversation(
-        self, *, user_id: str, chat_id: str, prompt: str
+        self, *, user_id: str, workspace_id: str, chat_id: str, prompt: str
     ) -> list[dict[str, str]]:
-        prior_messages = self._store.list_messages_for_chat(user_id, chat_id)
+        prior_messages = self._store.list_messages_for_chat(user_id, workspace_id, chat_id)
         if self._settings.max_history_messages > 0:
             prior_messages = prior_messages[-self._settings.max_history_messages :]
 

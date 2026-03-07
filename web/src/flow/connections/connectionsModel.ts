@@ -2,6 +2,7 @@ import { MarkerType, type Edge, type Connection } from "@xyflow/react";
 import type { AppNode } from "../types";
 
 export type UseConnectionsParams = {
+  workspaceId: string;
   nodes: AppNode[];
   setNodes: React.Dispatch<React.SetStateAction<AppNode[]>>;
   setEdges: React.Dispatch<React.SetStateAction<Edge[]>>;

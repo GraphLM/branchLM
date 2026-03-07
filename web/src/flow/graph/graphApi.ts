@@ -5,6 +5,7 @@ import { buildChatPositions, buildContextEdgesForSave } from "./graphModel";
 
 export type GraphChatDTO = {
   id: string;
+  workspaceId: string;
   title: string;
   position: { x: number; y: number };
 };
@@ -30,9 +31,10 @@ export type GraphDTO = {
 };
 
 export async function fetchGraph(params: {
+  workspaceId: string;
   signal: AbortSignal;
 }): Promise<GraphDTO | null> {
-  const res = await apiFetch("/api/graph", {
+  const res = await apiFetch(`/api/workspaces/${params.workspaceId}/graph`, {
     signal: params.signal,
   });
   if (!res.ok) return null;
@@ -40,10 +42,11 @@ export async function fetchGraph(params: {
 }
 
 export async function saveGraphLayout(params: {
+  workspaceId: string;
   nodes: AppNode[];
   edges: Edge[];
 }): Promise<void> {
-  await apiFetch("/api/graph/layout", {
+  await apiFetch(`/api/workspaces/${params.workspaceId}/graph/layout`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -57,17 +60,19 @@ export async function saveGraphLayout(params: {
 }
 
 export async function deleteChat(params: {
+  workspaceId: string;
   chatId: string;
 }): Promise<void> {
-  await apiFetch(`/api/chats/${params.chatId}`, {
+  await apiFetch(`/api/workspaces/${params.workspaceId}/chats/${params.chatId}`, {
     method: "DELETE",
   });
 }
 
 export async function deleteMessage(params: {
+  workspaceId: string;
   messageId: string;
 }): Promise<void> {
-  await apiFetch(`/api/messages/${params.messageId}`, {
+  await apiFetch(`/api/workspaces/${params.workspaceId}/messages/${params.messageId}`, {
     method: "DELETE",
   });
 }

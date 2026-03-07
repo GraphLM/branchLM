@@ -7,6 +7,8 @@ export type UseCanvasResult = {
   nodes: AppNode[];
   renderedEdges: Edge[];
   composerDraft: string;
+  selectedWorkspaceId: string | null;
+  workspacesForPanel: Array<{ id: string; title: string }>;
   panelOpen: boolean;
   chatsForPanel: Array<{ id: string; title: string }>;
   isLocked: boolean;
@@ -31,5 +33,9 @@ export type UseCanvasResult = {
   onPanelNodeHover: (id: string) => void;
   onPanelNodeHoverEnd: () => void;
   onPanelNodeClick: (id: string) => void;
+  onWorkspaceSelect: (workspaceId: string) => void;
+  onWorkspaceCreate: () => void;
+  onWorkspaceRename: (workspaceId: string, title: string) => void;
+  onWorkspaceDelete: (workspaceId: string) => void;
   sendComposerMessage: () => void;
 };

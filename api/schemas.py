@@ -10,6 +10,14 @@ class Position(BaseModel):
     y: float
 
 
+class CreateWorkspaceBody(BaseModel):
+    title: str
+
+
+class PatchWorkspaceBody(BaseModel):
+    title: str
+
+
 class CreateChatBody(BaseModel):
     title: str
     position: Position
@@ -29,15 +37,11 @@ class GenerateReplyBody(BaseModel):
 
 
 class ContextEdgeIn(BaseModel):
-    """Input model for context edge."""
-
     fromMessageId: str
     toChatId: str
     rank: int
 
 
 class GraphLayoutPutBody(BaseModel):
-    """Input model for graph layout put."""
-
     chatPositions: dict[str, Position]
     contextEdges: list[ContextEdgeIn]

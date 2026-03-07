@@ -9,6 +9,7 @@ import {
 } from "./messagingApi";
 
 export function useMessaging(params: {
+  workspaceId: string;
   nodes: AppNode[];
   composerDraft: string;
   setComposerDraft: (value: string) => void;
@@ -28,19 +29,21 @@ export function useMessaging(params: {
 
   const updateChatTitle = useCallback(
     (chatId: string, title: string) => {
+      if (!params.workspaceId) return;
       params.setNodes((ns) =>
         ns.map((n) =>
           n.id === chatId && n.type === "chat" ? { ...n, data: { ...n.data, title } } : n,
         ),
       );
 
-      updateChatTitleApi({ chatId, title }).catch(() => {});
+      updateChatTitleApi({ workspaceId: params.workspaceId, chatId, title }).catch(() => {});
     },
     [params],
   );
 
   const sendChatMessage = useCallback(
     async (chatId: string) => {
+      if (!params.workspaceId) return;
       const chat = params.nodes.find((n) => n.id === chatId && n.type === "chat");
       if (!chat || chat.type !== "chat") return;
 
@@ -56,6 +59,7 @@ export function useMessaging(params: {
       );
 
       const userCreated = await createMessage({
+        workspaceId: params.workspaceId,
         chatId,
         role: "user",
         text,
@@ -64,6 +68,7 @@ export function useMessaging(params: {
 
       const appText = `Mock response: Got it — "${text}"`;
       const appCreated = await createMessage({
+        workspaceId: params.workspaceId,
         chatId,
         role: "app",
         text: appText,
@@ -91,6 +96,7 @@ export function useMessaging(params: {
   );
 
   const sendComposerMessage = useCallback(async () => {
+    if (!params.workspaceId) return;
     const text = params.composerDraft.trim();
     if (!text) return;
 
@@ -100,6 +106,7 @@ export function useMessaging(params: {
     });
 
     const createdChat = await createChat({
+      workspaceId: params.workspaceId,
       title: "New chat",
       position,
     });
@@ -112,6 +119,7 @@ export function useMessaging(params: {
     });
 
     const userCreated = await createMessage({
+      workspaceId: params.workspaceId,
       chatId: createdChat.id,
       role: "user",
       text,
@@ -120,6 +128,7 @@ export function useMessaging(params: {
 
     const appText = `Mock response: Got it — "${text}"`;
     const appCreated = await createMessage({
+      workspaceId: params.workspaceId,
       chatId: createdChat.id,
       role: "app",
       text: appText,

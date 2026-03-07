@@ -13,18 +13,20 @@ from store.base import Store
 router = APIRouter()
 
 
-@router.get("/api/graph")
+@router.get("/api/workspaces/{workspace_id}/graph")
 def get_graph(
+    workspace_id: str,
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
 ) -> dict:
-    return svc_get_graph(user_id=user_id, store=store)
+    return svc_get_graph(user_id=user_id, workspace_id=workspace_id, store=store)
 
 
-@router.put("/api/graph/layout")
+@router.put("/api/workspaces/{workspace_id}/graph/layout")
 def put_graph_layout(
+    workspace_id: str,
     body: GraphLayoutPutBody,
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
 ) -> None:
-    svc_put_graph_layout(user_id=user_id, body=body, store=store)
+    svc_put_graph_layout(user_id=user_id, workspace_id=workspace_id, body=body, store=store)

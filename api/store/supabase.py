@@ -38,8 +38,8 @@ class SupabaseStore:
                 raise HTTPException(
                     status_code=500,
                     detail=(
-                        "Supabase tables not found. Run `api/supabase_schema.sql` in your Supabase "
-                        "SQL editor, then retry (you may need to reload the API schema cache)."
+                        "Supabase tables not found. Run latest migrations, then retry "
+                        "(you may need to reload the API schema cache)."
                     ),
                 ) from e
             raise HTTPException(
@@ -57,13 +57,70 @@ class SupabaseStore:
                 detail=f"Supabase is temporarily unavailable during {op}. Please retry.",
             ) from e
 
-    def list_chats(self, user_id: str) -> list[dict[str, Any]]:
-        return (
+    def _workspace_chat_ids(self, user_id: str, workspace_id: str) -> list[str]:
+        rows = (
             self._wrap_postgrest(
-                "select chats",
+                "select workspace chats",
                 lambda: (
                     self._client.table("chats")
-                    .select("id,title,position_x,position_y")
+                    .select("id")
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+        return [row["id"] for row in rows]
+
+    def workspace_exists(self, user_id: str, workspace_id: str) -> bool:
+        rows = (
+            self._wrap_postgrest(
+                "select workspace",
+                lambda: (
+                    self._client.table("workspaces")
+                    .select("id")
+                    .eq("id", workspace_id)
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+        return len(rows) == 1
+
+    def chat_exists(self, user_id: str, workspace_id: str, chat_id: str) -> bool:
+        rows = (
+            self._wrap_postgrest(
+                "select chat",
+                lambda: (
+                    self._client.table("chats")
+                    .select("id")
+                    .eq("id", chat_id)
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+        return len(rows) == 1
+
+    def list_workspaces(self, user_id: str) -> list[dict[str, Any]]:
+        return (
+            self._wrap_postgrest(
+                "select workspaces",
+                lambda: (
+                    self._client.table("workspaces")
+                    .select("id,title")
                     .eq("user_id", user_id)
                     .order("created_at")
                     .execute()
@@ -74,7 +131,83 @@ class SupabaseStore:
             or []
         )
 
-    def list_messages(self, user_id: str) -> list[dict[str, Any]]:
+    def create_workspace(self, user_id: str, title: str) -> dict[str, Any]:
+        created = self._wrap_postgrest(
+            "insert workspace",
+            lambda: (
+                self._client.table("workspaces")
+                .insert(
+                    {
+                        "user_id": user_id,
+                        "title": title,
+                    }
+                )
+                .execute()
+                .data
+            ),
+        )
+        if not created:
+            raise HTTPException(status_code=500, detail="Failed to create workspace")
+        row = created[0]
+        return {"id": row["id"], "title": row["title"]}
+
+    def update_workspace_title(self, user_id: str, workspace_id: str, title: str) -> None:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        now = datetime.now(timezone.utc).isoformat()
+        self._wrap_postgrest(
+            "update workspace title",
+            lambda: (
+                self._client.table("workspaces")
+                .update({"title": title, "updated_at": now})
+                .eq("id", workspace_id)
+                .eq("user_id", user_id)
+                .execute()
+            ),
+        )
+
+    def delete_workspace(self, user_id: str, workspace_id: str) -> None:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        self._wrap_postgrest(
+            "delete workspace",
+            lambda: (
+                self._client.table("workspaces")
+                .delete()
+                .eq("id", workspace_id)
+                .eq("user_id", user_id)
+                .execute()
+            ),
+        )
+
+    def list_chats(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
+        return (
+            self._wrap_postgrest(
+                "select chats",
+                lambda: (
+                    self._client.table("chats")
+                    .select("id,title,position_x,position_y,workspace_id")
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .order("created_at")
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+
+    def list_messages(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        chat_ids = self._workspace_chat_ids(user_id, workspace_id)
+        if not chat_ids:
+            return []
+
         return (
             self._wrap_postgrest(
                 "select messages",
@@ -82,6 +215,7 @@ class SupabaseStore:
                     self._client.table("messages")
                     .select("id,chat_id,ordinal,role,text")
                     .eq("user_id", user_id)
+                    .in_("chat_id", chat_ids)
                     .order("chat_id")
                     .order("ordinal")
                     .execute()
@@ -92,7 +226,12 @@ class SupabaseStore:
             or []
         )
 
-    def list_messages_for_chat(self, user_id: str, chat_id: str) -> list[dict[str, Any]]:
+    def list_messages_for_chat(
+        self, user_id: str, workspace_id: str, chat_id: str
+    ) -> list[dict[str, Any]]:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            return []
+
         return (
             self._wrap_postgrest(
                 "select chat messages",
@@ -110,7 +249,11 @@ class SupabaseStore:
             or []
         )
 
-    def list_context_edges(self, user_id: str) -> list[dict[str, Any]]:
+    def list_context_edges(self, user_id: str, workspace_id: str) -> list[dict[str, Any]]:
+        chat_ids = self._workspace_chat_ids(user_id, workspace_id)
+        if not chat_ids:
+            return []
+
         return (
             self._wrap_postgrest(
                 "select context_edges",
@@ -118,6 +261,7 @@ class SupabaseStore:
                     self._client.table("context_edges")
                     .select("from_message_id,to_chat_id,rank")
                     .eq("user_id", user_id)
+                    .in_("to_chat_id", chat_ids)
                     .order("rank")
                     .execute()
                     .data
@@ -128,8 +272,16 @@ class SupabaseStore:
         )
 
     def create_chat(
-        self, user_id: str, title: str, position_x: float, position_y: float
+        self,
+        user_id: str,
+        workspace_id: str,
+        title: str,
+        position_x: float,
+        position_y: float,
     ) -> dict[str, Any]:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
         created = self._wrap_postgrest(
             "insert chat",
             lambda: (
@@ -137,6 +289,7 @@ class SupabaseStore:
                 .insert(
                     {
                         "user_id": user_id,
+                        "workspace_id": workspace_id,
                         "title": title,
                         "position_x": position_x,
                         "position_y": position_y,
@@ -149,9 +302,14 @@ class SupabaseStore:
         if not created:
             raise HTTPException(status_code=500, detail="Failed to create chat")
         row = created[0]
-        return {"id": row["id"], "title": row["title"]}
+        return {"id": row["id"], "title": row["title"], "workspace_id": row["workspace_id"]}
 
-    def update_chat_title(self, user_id: str, chat_id: str, title: str) -> None:
+    def update_chat_title(
+        self, user_id: str, workspace_id: str, chat_id: str, title: str
+    ) -> None:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            raise HTTPException(status_code=404, detail="Chat not found")
+
         now = datetime.now(timezone.utc).isoformat()
         self._wrap_postgrest(
             "update chat title",
@@ -160,11 +318,15 @@ class SupabaseStore:
                 .update({"title": title, "updated_at": now})
                 .eq("id", chat_id)
                 .eq("user_id", user_id)
+                .eq("workspace_id", workspace_id)
                 .execute()
             ),
         )
 
-    def delete_chat(self, user_id: str, chat_id: str) -> None:
+    def delete_chat(self, user_id: str, workspace_id: str, chat_id: str) -> None:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            raise HTTPException(status_code=404, detail="Chat not found")
+
         self._wrap_postgrest(
             "delete chat",
             lambda: (
@@ -172,11 +334,17 @@ class SupabaseStore:
                 .delete()
                 .eq("id", chat_id)
                 .eq("user_id", user_id)
+                .eq("workspace_id", workspace_id)
                 .execute()
             ),
         )
 
-    def create_message(self, user_id: str, chat_id: str, role: str, text: str) -> dict[str, Any]:
+    def create_message(
+        self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str
+    ) -> dict[str, Any]:
+        if not self.chat_exists(user_id, workspace_id, chat_id):
+            raise HTTPException(status_code=404, detail="Chat not found")
+
         latest = self._wrap_postgrest(
             "select latest message ordinal",
             lambda: (
@@ -215,7 +383,29 @@ class SupabaseStore:
         row = created[0]
         return {"id": row["id"], "ordinal": row["ordinal"]}
 
-    def delete_message(self, user_id: str, message_id: str) -> None:
+    def delete_message(self, user_id: str, workspace_id: str, message_id: str) -> None:
+        message_rows = (
+            self._wrap_postgrest(
+                "select message",
+                lambda: (
+                    self._client.table("messages")
+                    .select("id,chat_id")
+                    .eq("id", message_id)
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                    .data
+                    or []
+                ),
+            )
+            or []
+        )
+        if not message_rows:
+            raise HTTPException(status_code=404, detail="Message not found")
+
+        if not self.chat_exists(user_id, workspace_id, message_rows[0]["chat_id"]):
+            raise HTTPException(status_code=404, detail="Message not found")
+
         self._wrap_postgrest(
             "delete message",
             lambda: (
@@ -228,10 +418,18 @@ class SupabaseStore:
         )
 
     def update_chat_positions(
-        self, user_id: str, positions: dict[str, tuple[float, float]]
+        self,
+        user_id: str,
+        workspace_id: str,
+        positions: dict[str, tuple[float, float]],
     ) -> None:
+        if not self.workspace_exists(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Workspace not found")
+
         now = datetime.now(timezone.utc).isoformat()
         for chat_id, (x, y) in positions.items():
+            if not self.chat_exists(user_id, workspace_id, chat_id):
+                continue
             self._wrap_postgrest(
                 "update chat layout",
                 lambda chat_id=chat_id, x=x, y=y: (
@@ -239,27 +437,46 @@ class SupabaseStore:
                     .update({"position_x": x, "position_y": y, "updated_at": now})
                     .eq("id", chat_id)
                     .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
                     .execute()
                 ),
             )
 
-    def replace_context_edges(self, user_id: str, edges: list[dict[str, Any]]) -> None:
-        self._wrap_postgrest(
-            "delete context_edges",
-            lambda: self._client.table("context_edges").delete().eq("user_id", user_id).execute(),
-        )
+    def replace_context_edges(
+        self, user_id: str, workspace_id: str, edges: list[dict[str, Any]]
+    ) -> None:
+        chat_ids = self._workspace_chat_ids(user_id, workspace_id)
+
+        if chat_ids:
+            self._wrap_postgrest(
+                "delete context_edges",
+                lambda: (
+                    self._client.table("context_edges")
+                    .delete()
+                    .eq("user_id", user_id)
+                    .in_("to_chat_id", chat_ids)
+                    .execute()
+                ),
+            )
+
         if not edges:
             return
-        rows = [
-            {
-                "user_id": user_id,
-                "from_message_id": e["from_message_id"],
-                "to_chat_id": e["to_chat_id"],
-                "rank": e["rank"],
-            }
-            for e in edges
-        ]
-        self._wrap_postgrest(
-            "insert context_edges",
-            lambda: self._client.table("context_edges").insert(rows).execute(),
-        )
+
+        rows = []
+        for edge in edges:
+            if edge["to_chat_id"] not in chat_ids:
+                continue
+            rows.append(
+                {
+                    "user_id": user_id,
+                    "from_message_id": edge["from_message_id"],
+                    "to_chat_id": edge["to_chat_id"],
+                    "rank": edge["rank"],
+                }
+            )
+
+        if rows:
+            self._wrap_postgrest(
+                "insert context_edges",
+                lambda: self._client.table("context_edges").insert(rows).execute(),
+            )

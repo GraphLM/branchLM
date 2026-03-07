@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import chats, graph, health, messages
+from routers import chats, graph, health, messages, workspaces
 from services.llm_service import OpenRouterClient
 from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
@@ -50,6 +50,7 @@ def create_app() -> FastAPI:
         app.state.store = MemoryStore()
 
     app.include_router(health.router)
+    app.include_router(workspaces.router)
     app.include_router(graph.router)
     app.include_router(chats.router)
     app.include_router(messages.router)
