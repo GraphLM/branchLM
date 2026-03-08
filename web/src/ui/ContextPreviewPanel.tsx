@@ -60,6 +60,38 @@ export default function ContextPreviewPanel(props: Props) {
               </div>
 
               <div className="mt-4">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-(--panel-muted)">Context nodes</h3>
+                <div className="mt-2 rounded-xl border border-(--panel-border) bg-(--control-bg) px-3 py-2 text-xs">
+                  <div className="text-(--panel-muted)">
+                    Linked nodes: {props.data.externalContext.linkedNodes} · Used nodes: {props.data.externalContext.usedNodes}
+                  </div>
+                  {props.data.externalContext.included && props.data.externalContext.text ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words leading-snug">{props.data.externalContext.text}</p>
+                  ) : null}
+                  {!props.data.externalContext.included && props.data.externalContext.blockedReason ? (
+                    <p className="mt-1 whitespace-pre-wrap break-words leading-snug text-amber-200">
+                      {props.data.externalContext.blockedReason}
+                    </p>
+                  ) : null}
+                  {!props.data.externalContext.included &&
+                  !props.data.externalContext.blockedReason &&
+                  props.data.externalContext.linkedNodes === 0 ? (
+                    <p className="mt-1 text-(--panel-muted)">No context nodes linked to this chat.</p>
+                  ) : null}
+                </div>
+                {props.data.externalContext.pendingNodes.length > 0 ? (
+                  <div className="mt-2 rounded-xl border border-(--panel-border) px-3 py-2 text-xs text-(--panel-muted)">
+                    Pending: {props.data.externalContext.pendingNodes.join(", ")}
+                  </div>
+                ) : null}
+                {props.data.externalContext.statusErrorNodes.length > 0 ? (
+                  <div className="mt-2 rounded-xl border border-(--panel-border) px-3 py-2 text-xs text-red-300">
+                    Access errors: {props.data.externalContext.statusErrorNodes.join(", ")}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="mt-4">
                 <h3 className="text-xs font-semibold uppercase tracking-wide text-(--panel-muted)">Included</h3>
                 <ul className="mt-2 space-y-2">
                   {props.data.included.length === 0 ? (

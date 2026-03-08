@@ -99,6 +99,15 @@ export type ContextPreviewDTO = {
     included: number;
     excluded: number;
   };
+  externalContext: {
+    included: boolean;
+    text: string | null;
+    blockedReason: string | null;
+    linkedNodes: number;
+    usedNodes: number;
+    pendingNodes: string[];
+    statusErrorNodes: string[];
+  };
 };
 
 export async function fetchContextPreview(params: {

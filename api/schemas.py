@@ -83,6 +83,16 @@ class ContextPreviewTokens(BaseModel):
     excluded: int
 
 
+class ContextPreviewExternalContext(BaseModel):
+    included: bool
+    text: str | None = None
+    blockedReason: str | None = None
+    linkedNodes: int
+    usedNodes: int
+    pendingNodes: list[str]
+    statusErrorNodes: list[str]
+
+
 class ContextPreviewResponse(BaseModel):
     chatId: str
     model: str
@@ -94,6 +104,7 @@ class ContextPreviewResponse(BaseModel):
     summary: ContextPreviewSummary
     counts: ContextPreviewCounts
     tokens: ContextPreviewTokens
+    externalContext: ContextPreviewExternalContext
 
 
 class ContextEdgeIn(BaseModel):

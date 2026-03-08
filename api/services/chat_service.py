@@ -209,6 +209,7 @@ class ChatGenerationService:
         included_messages = plan["included_messages"]
         excluded_messages = plan["excluded_messages"]
         summary_message = plan["summary_message"]
+        external_context = plan["external_context"]
 
         return {
             "chatId": chat_id,
@@ -239,6 +240,21 @@ class ChatGenerationService:
             "tokens": {
                 "included": sum(int(m.get("token_estimate", 0)) for m in included_messages),
                 "excluded": sum(int(m.get("token_estimate", 0)) for m in excluded_messages),
+            },
+            "externalContext": {
+                "included": bool(external_context.get("text")),
+                "text": str(external_context.get("text") or "") or None,
+                "blockedReason": str(external_context.get("blocked_reason") or "") or None,
+                "linkedNodes": int(external_context.get("linked_nodes") or 0),
+                "usedNodes": int(external_context.get("used_nodes") or 0),
+                "pendingNodes": [
+                    str(node_title)
+                    for node_title in (external_context.get("pending_nodes") or [])
+                ],
+                "statusErrorNodes": [
+                    str(node_title)
+                    for node_title in (external_context.get("status_error_nodes") or [])
+                ],
             },
         }
 
