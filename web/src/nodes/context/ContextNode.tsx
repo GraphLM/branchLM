@@ -55,18 +55,18 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
         type="button"
         className="mt-3 rounded-md border border-(--control-border) bg-(--control-bg) px-2 py-1 text-xs hover:cursor-pointer"
         onClick={() => inputRef.current?.click()}
-        disabled={busy || hasSource}
+        disabled={busy}
       >
-        {busy ? "Uploading..." : "Import file"}
+        {busy ? "Uploading..." : hasSource ? "Replace file" : "Import file"}
       </button>
 
       <button
         type="button"
         className="mt-2 ml-2 rounded-md border border-(--control-border) bg-(--control-bg) px-2 py-1 text-xs hover:cursor-pointer"
         onClick={() => setTextMode((prev) => !prev)}
-        disabled={busy || hasSource}
+        disabled={busy}
       >
-        Paste text
+        {hasSource ? "Replace text" : "Paste text"}
       </button>
 
       {textMode ? (
