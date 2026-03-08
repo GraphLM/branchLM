@@ -10,6 +10,8 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
     chats = store.list_chats(user_id, workspace_id)
     messages = store.list_messages(user_id, workspace_id)
     edges = store.list_context_edges(user_id, workspace_id)
+    context_nodes = store.list_context_nodes(user_id, workspace_id)
+    context_node_edges = store.list_context_node_edges(user_id, workspace_id)
 
     return {
         "chats": [
@@ -40,6 +42,29 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
             }
             for e in edges
         ],
+        "contextNodes": [
+            {
+                "id": n["id"],
+                "workspaceId": n["workspace_id"],
+                "title": n["title"],
+                "position": {"x": n["position_x"], "y": n["position_y"]},
+                "assetCount": len(assets),
+                "status": (assets[-1].get("status") if assets else None),
+                "statusMessage": (assets[-1].get("status_message") if assets else None),
+                "sourceFileName": (assets[-1].get("file_name") if assets else None),
+                "sourceMimeType": (assets[-1].get("mime_type") if assets else None),
+            }
+            for n in context_nodes
+            for assets in [store.list_context_node_assets(user_id, workspace_id, n["id"])]
+        ],
+        "contextNodeEdges": [
+            {
+                "fromContextNodeId": e["from_context_node_id"],
+                "toChatId": e["to_chat_id"],
+                "rank": e["rank"],
+            }
+            for e in context_node_edges
+        ],
     }
 
 
@@ -50,6 +75,11 @@ def put_graph_layout(
         chat_id: (pos.x, pos.y) for chat_id, pos in body.chatPositions.items()
     }
     store.update_chat_positions(user_id, workspace_id, positions)
+    context_node_positions: dict[str, tuple[float, float]] = {
+        context_node_id: (pos.x, pos.y)
+        for context_node_id, pos in body.contextNodePositions.items()
+    }
+    store.update_context_node_positions(user_id, workspace_id, context_node_positions)
 
     store.replace_context_edges(
         user_id,
@@ -61,5 +91,17 @@ def put_graph_layout(
                 "rank": e.rank,
             }
             for e in body.contextEdges
+        ],
+    )
+    store.replace_context_node_edges(
+        user_id,
+        workspace_id,
+        [
+            {
+                "from_context_node_id": e.fromContextNodeId,
+                "to_chat_id": e.toChatId,
+                "rank": e.rank,
+            }
+            for e in body.contextNodeEdges
         ],
     )

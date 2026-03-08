@@ -32,11 +32,14 @@ export default function Canvas({ onLogout }: Props) {
           workspaces={canvas.workspacesForPanel}
           selectedWorkspaceId={canvas.selectedWorkspaceId}
           chats={canvas.chatsForPanel}
+          contextNodes={canvas.contextNodesForPanel}
           onOpen={canvas.onPanelOpen}
           onClose={canvas.onPanelClose}
           onNodeHover={canvas.onPanelNodeHover}
           onNodeHoverEnd={canvas.onPanelNodeHoverEnd}
           onNodeClick={canvas.onPanelNodeClick}
+          onChatRename={canvas.onPanelChatRename}
+          onContextNodeRename={canvas.onPanelContextNodeRename}
           onWorkspaceSelect={canvas.onWorkspaceSelect}
           onWorkspaceCreate={canvas.onWorkspaceCreate}
           onWorkspaceRename={canvas.onWorkspaceRename}
@@ -73,6 +76,7 @@ export default function Canvas({ onLogout }: Props) {
           />
           <CanvasToolbar
             onAutoLayout={canvas.onAutoLayout}
+            onAddContextNode={canvas.onAddContextNode}
             locked={canvas.isLocked}
             onLockToggle={canvas.onLockToggle}
             primaryMode={canvas.toolbarPrimaryMode}

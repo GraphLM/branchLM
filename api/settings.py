@@ -80,6 +80,9 @@ class Settings:
     openrouter_site_url: str | None
     openrouter_app_name: str
     openrouter_timeout_seconds: float
+    backboard_api_key: str | None
+    backboard_base_url: str
+    backboard_assistant_id: str | None
     max_prompt_chars: int
     max_history_messages: int
     max_completion_tokens: int
@@ -118,6 +121,12 @@ class Settings:
             openrouter_site_url=_env("OPENROUTER_SITE_URL"),
             openrouter_app_name=_env("OPENROUTER_APP_NAME", "branchLM") or "branchLM",
             openrouter_timeout_seconds=_env_float("OPENROUTER_TIMEOUT_SECONDS", 20.0),
+            backboard_api_key=_env("BACKBOARD_API_KEY"),
+            backboard_base_url=(
+                _env("BACKBOARD_BASE_URL", "https://app.backboard.io/api")
+                or "https://app.backboard.io/api"
+            ),
+            backboard_assistant_id=_env("BACKBOARD_ASSISTANT_ID"),
             max_prompt_chars=_env_int("MAX_PROMPT_CHARS", 4000),
             max_history_messages=_env_int("MAX_HISTORY_MESSAGES", 12),
             max_completion_tokens=_env_int("MAX_COMPLETION_TOKENS", 600),

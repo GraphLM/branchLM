@@ -11,6 +11,7 @@ try:
 except ModuleNotFoundError:  # pragma: no cover - optional in local/test environments
     Client = Any  # type: ignore[assignment,misc]
 
+from services.backboard_service import BackboardClient
 from settings import Settings
 from store.base import Store
 
@@ -111,3 +112,9 @@ def get_metrics(request: Request) -> Any:
     metrics = getattr(request.app.state, "metrics", None)
     assert metrics is not None, "Metrics not initialized on app.state"
     return metrics
+
+
+def get_backboard_client(request: Request) -> BackboardClient:
+    client = getattr(request.app.state, "backboard_client", None)
+    assert client is not None, "Backboard client not initialized on app.state"
+    return client
