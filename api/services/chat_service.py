@@ -122,7 +122,15 @@ class ChatGenerationService:
 
         model = self._resolve_model(chat=chat, model_override=body.model)
         web_search = bool(body.webSearch)
-        if (not web_search) and self._prompt_requires_web_search(prompt):
+        plan = self._plan_conversation(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat_id,
+            prompt=prompt,
+            model=model,
+        )
+
+        if (not web_search) and self._should_require_web_search(prompt=prompt, plan=plan):
             user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
             guidance = (
                 "Web search is currently off for this chat node, and this request looks "
@@ -151,12 +159,28 @@ class ChatGenerationService:
                 response["debug"] = {"web_search_guidance": True}
             return response
 
-        conversation, context_meta = self._build_conversation(
-            user_id=user_id,
-            workspace_id=workspace_id,
-            chat_id=chat_id,
-            prompt=prompt,
-            model=model,
+        conversation = plan["conversation"]
+        context_meta = plan["external_context"]
+        included_messages = plan["included_messages"]
+        excluded_messages = plan["excluded_messages"]
+        prompt_tokens = plan["prompt_tokens"]
+
+        self._metrics.incr("context.history_selected", len(included_messages))
+        self._metrics.incr("context.history_dropped", len(excluded_messages))
+        self._metrics.incr("context.prompt_tokens_est", prompt_tokens)
+
+        logger.info(
+            (
+                "conversation_built chat_id=%s model=%s prompt_tokens=%d "
+                "history_msgs=%d dropped_msgs=%d estimated_input_tokens=%d"
+            ),
+            chat_id,
+            model,
+            prompt_tokens,
+            len(included_messages),
+            len(excluded_messages),
+            prompt_tokens
+            + sum(self._estimate_tokens(m["content"], model=model) for m in conversation[:-1]),
         )
         user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
         if self._should_block_on_external_context(context_meta):
@@ -221,6 +245,21 @@ class ChatGenerationService:
             r"\b(search the web|use web search|look up online|find online)\b",
         )
         return any(re.search(pattern, normalized) for pattern in patterns)
+
+    def _should_require_web_search(self, *, prompt: str, plan: dict[str, Any]) -> bool:
+        if not self._prompt_requires_web_search(prompt):
+            return False
+
+        # If chat/branch context already has material to answer from, do not force browsing.
+        included_messages = plan.get("included_messages") or []
+        if included_messages:
+            return False
+
+        external_context = plan.get("external_context") or {}
+        if str(external_context.get("text") or "").strip():
+            return False
+
+        return True
 
     def _should_block_on_external_context(self, context_meta: dict[str, Any]) -> bool:
         blocked_reason = str(context_meta.get("blocked_reason") or "").strip()

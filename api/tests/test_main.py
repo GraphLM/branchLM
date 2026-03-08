@@ -200,6 +200,58 @@ def test_generate_reply_guides_when_web_search_is_off_for_freshness_queries() ->
     assert fake_backboard.generate_calls == []
 
 
+def test_generate_reply_uses_branch_context_without_forcing_web_search() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Branch explanation")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    source_chat_id = _create_chat(client, workspace_id, "Source")
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "Find one major AI news event from the last 7 days."},
+        headers=DEV_AUTH_HEADERS,
+    )
+    m1 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "Anthropic launched Claude 2."},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [
+                    {
+                        "fromMessageId": m1,
+                        "toChatId": target_chat_id,
+                        "rank": 0,
+                    }
+                ],
+            },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "explain the news in layman terms", "webSearch": False},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    assert "Web search is currently off" not in resp.json()["appMessage"]["text"]
+    assert fake_backboard.generate_calls != []
+
+
 def test_generate_reply_rate_limits_requests() -> None:
     app = create_app()
     app.state.settings = replace(
