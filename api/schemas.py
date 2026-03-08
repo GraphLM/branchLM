@@ -33,6 +33,10 @@ class CreateContextNodeBody(BaseModel):
     position: Position
 
 
+class PatchContextNodeBody(BaseModel):
+    title: str
+
+
 class CreateContextNodeTextAssetBody(BaseModel):
     text: str
 

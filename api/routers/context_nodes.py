@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Query, UploadFile
 
 from deps import get_backboard_client, get_store, get_user_id
-from schemas import CreateContextNodeBody, CreateContextNodeTextAssetBody
+from schemas import CreateContextNodeBody, CreateContextNodeTextAssetBody, PatchContextNodeBody
 from services.backboard_service import BackboardClient
 from services.context_node_service import ContextNodeService
 from store.base import Store
@@ -42,6 +42,23 @@ def delete_context_node(
         user_id=user_id,
         workspace_id=workspace_id,
         context_node_id=context_node_id,
+    )
+
+
+@router.patch("/api/workspaces/{workspace_id}/context-nodes/{context_node_id}")
+def patch_context_node(
+    workspace_id: str,
+    context_node_id: str,
+    body: PatchContextNodeBody,
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[Store, Depends(get_store)],
+    backboard: Annotated[BackboardClient, Depends(get_backboard_client)],
+) -> None:
+    ContextNodeService(store=store, backboard=backboard).update_context_node_title(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        context_node_id=context_node_id,
+        title=body.title,
     )
 
 

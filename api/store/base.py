@@ -68,6 +68,9 @@ class Store(Protocol):
     def delete_context_node(
         self, user_id: str, workspace_id: str, context_node_id: str
     ) -> None: ...
+    def update_context_node_title(
+        self, user_id: str, workspace_id: str, context_node_id: str, title: str
+    ) -> None: ...
     def create_context_node_asset(
         self,
         user_id: str,

@@ -53,6 +53,14 @@ class ContextNodeService:
     ) -> None:
         self._store.delete_context_node(user_id, workspace_id, context_node_id)
 
+    def update_context_node_title(
+        self, *, user_id: str, workspace_id: str, context_node_id: str, title: str
+    ) -> None:
+        normalized = title.strip()
+        if not normalized:
+            raise HTTPException(status_code=400, detail="Context node title cannot be empty")
+        self._store.update_context_node_title(user_id, workspace_id, context_node_id, normalized)
+
     def list_assets(
         self, *, user_id: str, workspace_id: str, context_node_id: str
     ) -> list[dict]:

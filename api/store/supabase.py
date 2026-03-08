@@ -690,6 +690,32 @@ class SupabaseStore:
                 ) from exc
             raise
 
+    def update_context_node_title(
+        self, user_id: str, workspace_id: str, context_node_id: str, title: str
+    ) -> None:
+        if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            self._wrap_postgrest(
+                "update context node title",
+                lambda: (
+                    self._client.table("context_nodes")
+                    .update({"title": title, "updated_at": now})
+                    .eq("id", context_node_id)
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+
     def create_context_node_asset(
         self,
         user_id: str,

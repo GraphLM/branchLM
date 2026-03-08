@@ -406,6 +406,20 @@ class MemoryStore:
             if asset["user_id"] == user_id and asset["context_node_id"] == context_node_id:
                 del self._context_node_assets[asset_id]
 
+    def update_context_node_title(
+        self, user_id: str, workspace_id: str, context_node_id: str, title: str
+    ) -> None:
+        node = self._context_nodes.get(context_node_id)
+        if (
+            not node
+            or node["user_id"] != user_id
+            or node["workspace_id"] != workspace_id
+            or not self.workspace_exists(user_id, workspace_id)
+        ):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        node["title"] = title
+        node["updated_at"] = datetime.now(timezone.utc).isoformat()
+
     def create_context_node_asset(
         self,
         user_id: str,
