@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { BotMessageSquare } from "lucide-react";
 import NodeDeleteButton from "../../ui/NodeDeleteButton";
 import SendButton from "../../ui/SendButton";
 
@@ -10,6 +11,7 @@ type Props = {
   focusToken?: number;
   targetHandle?: ReactNode;
   onDelete(): void;
+  onContextPreview(): void;
   onDraftChange(nextDraft: string): void;
   onSend(): void;
   onTitleCommit(nextTitle: string): void;
@@ -24,6 +26,7 @@ export default function ChatCard(props: Props) {
     focusToken,
     targetHandle,
     onDelete,
+    onContextPreview,
     onDraftChange,
     onSend,
     onTitleCommit,
@@ -105,7 +108,25 @@ export default function ChatCard(props: Props) {
           </button>
         )}
 
-        <NodeDeleteButton title="Delete chat" onClick={onDelete} />
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="relative rounded-lg border border-transparent bg-transparent p-1 opacity-0 transition-opacity group-hover:opacity-100 hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)"
+            title="Preview context"
+            aria-label="Preview context"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onContextPreview();
+            }}
+          >
+            <BotMessageSquare
+              size={14}
+              className="text-(--panel-muted) group-hover:text-(--panel-fg)"
+            />
+          </button>
+          <NodeDeleteButton title="Delete chat" onClick={onDelete} />
+        </div>
       </div>
 
       <div

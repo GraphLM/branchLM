@@ -1,6 +1,7 @@
 import { Background, BackgroundVariant, MarkerType, Panel as FlowPanel, ReactFlow } from "@xyflow/react";
 import { LogOut } from "lucide-react";
 import "@xyflow/react/dist/style.css";
+import ContextPreviewPanel from "../../ui/ContextPreviewPanel";
 import Panel from "../../ui/Panel";
 import { FlowActionsProvider } from "../actionsContext";
 import CanvasToolbar from "./CanvasToolbar";
@@ -98,6 +99,15 @@ export default function Canvas({ onLogout }: Props) {
             </button>
           </FlowPanel>
         </ReactFlow>
+
+        <ContextPreviewPanel
+          open={canvas.previewChatId != null}
+          title={canvas.previewChatTitle}
+          loading={canvas.previewLoading}
+          error={canvas.previewError}
+          data={canvas.previewData}
+          onClose={canvas.onContextPreviewClose}
+        />
       </FlowActionsProvider>
     </div>
   );
