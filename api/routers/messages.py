@@ -70,6 +70,7 @@ def preview_chat_context(
         rate_limiter=request.app.state.rate_limiter,
         settings=request.app.state.settings,
         metrics=request.app.state.metrics,
+        backboard=request.app.state.backboard_client,
     )
     return service.preview_chat_context(
         user_id=user_id,
