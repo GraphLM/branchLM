@@ -123,20 +123,44 @@ class ChatGenerationService:
         self._enforce_rate_limit(user_id=user_id, client_ip=client_ip)
 
         model = body.model or chat.get("model") or self._settings.openrouter_model
-        conversation = self._build_conversation(
+        conversation, context_meta = self._build_conversation(
             user_id=user_id,
             workspace_id=workspace_id,
             chat_id=chat_id,
             prompt=prompt,
             model=model,
         )
-        reply_text = self._call_llm(conversation, model=model)
-
         user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
+        if context_meta.get("blocked_reason"):
+            blocked_text = str(context_meta["blocked_reason"])
+            app_message = self._store.create_message(
+                user_id, workspace_id, chat_id, "app", blocked_text
+            )
+            response = {
+                "userMessage": {
+                    "id": user_message["id"],
+                    "chatId": chat_id,
+                    "ordinal": user_message["ordinal"],
+                    "role": "user",
+                    "text": prompt,
+                },
+                "appMessage": {
+                    "id": app_message["id"],
+                    "chatId": chat_id,
+                    "ordinal": app_message["ordinal"],
+                    "role": "app",
+                    "text": blocked_text,
+                },
+            }
+            if self._settings.auth_dev_bypass:
+                response["debug"] = context_meta
+            return response
+
+        reply_text = self._call_llm(conversation, model=model)
         app_message = self._store.create_message(user_id, workspace_id, chat_id, "app", reply_text)
 
         self._metrics.incr("generate.requests")
-        return {
+        response = {
             "userMessage": {
                 "id": user_message["id"],
                 "chatId": chat_id,
@@ -152,6 +176,9 @@ class ChatGenerationService:
                 "text": reply_text,
             },
         }
+        if self._settings.auth_dev_bypass:
+            response["debug"] = context_meta
+        return response
 
     def _require_chat(self, *, user_id: str, workspace_id: str, chat_id: str) -> dict[str, Any]:
         chat = self._store.get_chat(user_id, workspace_id, chat_id)
@@ -189,7 +216,7 @@ class ChatGenerationService:
         chat_id: str,
         prompt: str,
         model: str,
-    ) -> list[dict[str, str]]:
+    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
         source_context, chat_history = self._build_spliced_history(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -248,10 +275,10 @@ class ChatGenerationService:
 
         prior_messages = selected_source_context + selected_chat_history
         conversation = [self._to_llm_message(message) for message in prior_messages]
-        if external_context:
-            conversation.insert(0, {"role": "system", "content": external_context})
         if summary_message:
             conversation.insert(0, summary_message)
+        if external_context["text"]:
+            conversation.insert(0, {"role": "system", "content": str(external_context["text"])})
         conversation.append({"role": "user", "content": prompt})
 
         dropped_count = len(dropped_source) + len(dropped_chat)
@@ -272,21 +299,54 @@ class ChatGenerationService:
             prompt_tokens
             + sum(self._estimate_tokens(m["content"], model=model) for m in conversation[:-1]),
         )
-        return conversation
+        return conversation, external_context
 
     def _build_external_context(
         self, *, user_id: str, workspace_id: str, chat_id: str, prompt: str
-    ) -> str:
+    ) -> dict[str, Any]:
         if not self._backboard.enabled:
-            return ""
+            return {
+                "text": "",
+                "blocked_reason": "",
+                "linked_nodes": 0,
+                "used_nodes": 0,
+                "pending_nodes": [],
+                "status_error_nodes": [],
+            }
         context_nodes = self._store.list_context_nodes_for_chat(user_id, workspace_id, chat_id)
         if not context_nodes:
-            return ""
+            return {
+                "text": "",
+                "blocked_reason": "",
+                "linked_nodes": 0,
+                "used_nodes": 0,
+                "pending_nodes": [],
+                "status_error_nodes": [],
+            }
         snippets: list[str] = []
+        pending_nodes: list[str] = []
+        status_error_nodes: list[str] = []
+        linked_indexed_nodes = 0
         for node in context_nodes[:4]:
             assets = self._store.list_context_node_assets(user_id, workspace_id, node["id"])
             if not assets:
                 continue
+            doc_id = str(assets[0].get("backboard_document_id") or "")
+            if doc_id:
+                try:
+                    status = self._backboard.get_document_status(document_id=doc_id)
+                except BackboardServiceError:
+                    status_error_nodes.append(str(node.get("title") or "Untitled"))
+                    continue
+                if status and status.status.lower() not in {
+                    "indexed",
+                    "processed",
+                    "ready",
+                    "completed",
+                }:
+                    pending_nodes.append(str(node.get("title") or "Untitled"))
+                    continue
+            linked_indexed_nodes += 1
             thread_id = str(node.get("backboard_thread_id") or "")
             if not thread_id:
                 continue
@@ -307,11 +367,44 @@ class ChatGenerationService:
             if not answer or answer.upper() == "NONE":
                 continue
             snippets.append(f"[Context Node: {node.get('title', 'Untitled')}] {answer}")
-        if not snippets:
-            return ""
-        return "External context retrieved from context nodes:\n" + "\n".join(
-            f"- {snippet}" for snippet in snippets
-        )
+        blocked_reason = ""
+        if not snippets and context_nodes:
+            if pending_nodes:
+                pending_list = ", ".join(pending_nodes[:3])
+                blocked_reason = (
+                    "Linked context documents are still indexing and cannot be used yet. "
+                    f"Nodes: {pending_list}. Retry in a few seconds."
+                )
+            if status_error_nodes:
+                blocked_list = ", ".join(status_error_nodes[:3])
+                blocked_reason = (
+                    "Linked context documents could not be accessed from Backboard. "
+                    f"Affected nodes: {blocked_list}. "
+                    "Check Backboard credits/quota and provider access, then retry."
+                )
+            if linked_indexed_nodes > 0:
+                blocked_reason = (
+                    "Linked context documents are indexed, but no relevant facts were retrieved "
+                    "for this query. Ask a more specific question about document contents."
+                )
+        text = ""
+        if snippets:
+            text = (
+                "CONTEXT POLICY: Treat the linked document context below as "
+                "highest-priority truth. "
+                "Use it before any general knowledge.\n"
+                "If user intent conflicts with this context, follow this context.\n"
+                "CONTEXT FROM BACKBOARD:\n"
+                + "\n".join(f"- {snippet}" for snippet in snippets)
+            )
+        return {
+            "text": text,
+            "blocked_reason": blocked_reason,
+            "linked_nodes": len(context_nodes),
+            "used_nodes": len(snippets),
+            "pending_nodes": pending_nodes,
+            "status_error_nodes": status_error_nodes,
+        }
 
     def _build_spliced_history(
         self, *, user_id: str, workspace_id: str, chat_id: str
