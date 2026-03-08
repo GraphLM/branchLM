@@ -35,6 +35,8 @@ export type GraphContextNodeDTO = {
   title: string;
   position: { x: number; y: number };
   assetCount?: number;
+  status?: string | null;
+  statusMessage?: string | null;
 };
 
 export type GraphContextNodeEdgeDTO = {
@@ -67,7 +69,7 @@ export async function saveGraphLayout(params: {
   nodes: AppNode[];
   edges: Edge[];
 }): Promise<void> {
-  await apiFetch(`/api/workspaces/${params.workspaceId}/graph/layout`, {
+  const res = await apiFetch(`/api/workspaces/${params.workspaceId}/graph/layout`, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
@@ -83,6 +85,9 @@ export async function saveGraphLayout(params: {
       }),
     }),
   });
+  if (!res.ok) {
+    throw new Error(await parseErrorDetail(res));
+  }
 }
 
 export async function deleteChat(params: {
@@ -150,11 +155,13 @@ export async function uploadContextNodeAsset(params: {
   workspaceId: string;
   contextNodeId: string;
   file: File;
+  replace?: boolean;
 }): Promise<ContextNodeAssetDTO> {
   const form = new FormData();
   form.append("file", params.file);
+  const query = params.replace ? "?replace=true" : "";
   const res = await apiFetch(
-    `/api/workspaces/${params.workspaceId}/context-nodes/${params.contextNodeId}/assets`,
+    `/api/workspaces/${params.workspaceId}/context-nodes/${params.contextNodeId}/assets${query}`,
     { method: "POST", body: form },
   );
   if (!res.ok) {
@@ -167,9 +174,11 @@ export async function uploadContextNodeTextAsset(params: {
   workspaceId: string;
   contextNodeId: string;
   text: string;
+  replace?: boolean;
 }): Promise<ContextNodeAssetDTO> {
+  const query = params.replace ? "?replace=true" : "";
   const res = await apiFetch(
-    `/api/workspaces/${params.workspaceId}/context-nodes/${params.contextNodeId}/text`,
+    `/api/workspaces/${params.workspaceId}/context-nodes/${params.contextNodeId}/text${query}`,
     {
       method: "POST",
       headers: { "content-type": "application/json" },

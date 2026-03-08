@@ -25,7 +25,15 @@ import {
   uploadContextNodeAsset,
   uploadContextNodeTextAsset,
 } from "./graphApi";
-import { applyAutoLayout, collectCascadeRemoval, styleRenderedEdges } from "./graphModel";
+import {
+  applyAutoLayout,
+  buildChatPositions,
+  buildContextEdgesForSave,
+  buildContextNodeEdgesForSave,
+  buildContextNodePositions,
+  collectCascadeRemoval,
+  styleRenderedEdges,
+} from "./graphModel";
 
 function persistCascadeDeletes(params: {
   workspaceId: string;
@@ -50,11 +58,41 @@ export function useGraph(params: {
   const hasLoadedPersistedStateRef = useRef(false);
   const saveTimerRef = useRef<number | null>(null);
   const loadedGraphSuccessfullyRef = useRef(false);
+  const lastSavedLayoutFingerprintRef = useRef<string>("");
 
   const [nodes, setNodes] = useState<AppNode[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [isLocked, setIsLocked] = useState(false);
   const [hoveredEdgeId, setHoveredEdgeId] = useState<string | null>(null);
+
+  const persistLayoutNow = useCallback(
+    async (snapshot?: { nodes: AppNode[]; edges: Edge[] }) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      const nextNodes = snapshot?.nodes ?? nodes;
+      const nextEdges = snapshot?.edges ?? edges;
+      const fingerprint = JSON.stringify({
+        chatPositions: buildChatPositions(nextNodes),
+        contextNodePositions: buildContextNodePositions(nextNodes),
+        contextEdges: buildContextEdgesForSave({ nodes: nextNodes, edges: nextEdges }),
+        contextNodeEdges: buildContextNodeEdgesForSave({ nodes: nextNodes, edges: nextEdges }),
+      });
+      if (fingerprint === lastSavedLayoutFingerprintRef.current) return;
+      let lastError: unknown = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        try {
+          await saveGraphLayout({ workspaceId, nodes: nextNodes, edges: nextEdges });
+          lastSavedLayoutFingerprintRef.current = fingerprint;
+          return;
+        } catch (error) {
+          lastError = error;
+          await new Promise((resolve) => window.setTimeout(resolve, 250 * (attempt + 1)));
+        }
+      }
+      throw lastError ?? new Error("Failed to save graph layout");
+    },
+    [edges, nodes, params.workspaceId],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -108,6 +146,10 @@ export function useGraph(params: {
           );
         }
         for (const n of data.contextNodes ?? []) {
+          const statusText =
+            n.status && n.status !== "indexed"
+              ? `Source: ${n.status}`
+              : n.statusMessage ?? undefined;
           nextNodes.push(
             createContextNode({
               id: n.id,
@@ -115,13 +157,14 @@ export function useGraph(params: {
               position: n.position,
               title: n.title,
               assetCount: n.assetCount ?? 0,
+              statusText,
             }),
           );
         }
 
         const nextEdges: Edge[] = (data.contextEdges ?? [])
           .map((e) => ({
-            id: `ctx:${e.fromMessageId}->${e.toChatId}`,
+            id: `ctx:${e.fromMessageId}->${e.toChatId}:${e.rank}`,
             source: e.fromMessageId,
             target: e.toChatId,
             markerEnd: { type: MarkerType.ArrowClosed },
@@ -129,7 +172,7 @@ export function useGraph(params: {
           }))
           .concat(
             (data.contextNodeEdges ?? []).map((e) => ({
-              id: `ctxn:${e.fromContextNodeId}->${e.toChatId}`,
+              id: `ctxn:${e.fromContextNodeId}->${e.toChatId}:${e.rank}`,
               source: e.fromContextNodeId,
               target: e.toChatId,
               markerEnd: { type: MarkerType.ArrowClosed },
@@ -167,7 +210,7 @@ export function useGraph(params: {
     saveTimerRef.current = window.setTimeout(() => {
       if (!loadedGraphSuccessfullyRef.current) return;
 
-      saveGraphLayout({ workspaceId, nodes, edges }).catch(() => {
+      persistLayoutNow({ nodes, edges }).catch(() => {
         // ignore
       });
     }, 500);
@@ -178,7 +221,7 @@ export function useGraph(params: {
         saveTimerRef.current = null;
       }
     };
-  }, [edges, nodes, params.workspaceId]);
+  }, [edges, nodes, params.workspaceId, persistLayoutNow]);
 
   useEffect(() => {
     setNodes((ns) => applyAutoLayout(ns));
@@ -273,7 +316,16 @@ export function useGraph(params: {
       const workspaceId = params.workspaceId;
       if (!workspaceId) return;
       try {
-        const created = await uploadContextNodeAsset({ workspaceId, contextNodeId, file });
+        const contextNode = nodes.find(
+          (n) => n.id === contextNodeId && n.type === "context",
+        );
+        const existing = contextNode?.type === "context" && (contextNode.data.assetCount ?? 0) > 0;
+        const created = await uploadContextNodeAsset({
+          workspaceId,
+          contextNodeId,
+          file,
+          replace: existing,
+        });
         setNodes((nodesSnapshot) =>
           nodesSnapshot.map((n) => {
             if (n.id !== contextNodeId || n.type !== "context") return n;
@@ -301,7 +353,7 @@ export function useGraph(params: {
         );
       }
     },
-    [params.workspaceId],
+    [nodes, params.workspaceId],
   );
 
   const uploadTextToContextNode = useCallback(
@@ -309,10 +361,15 @@ export function useGraph(params: {
       const workspaceId = params.workspaceId;
       if (!workspaceId) return;
       try {
+        const contextNode = nodes.find(
+          (n) => n.id === contextNodeId && n.type === "context",
+        );
+        const existing = contextNode?.type === "context" && (contextNode.data.assetCount ?? 0) > 0;
         const created = await uploadContextNodeTextAsset({
           workspaceId,
           contextNodeId,
           text,
+          replace: existing,
         });
         setNodes((nodesSnapshot) =>
           nodesSnapshot.map((n) => {
@@ -341,7 +398,7 @@ export function useGraph(params: {
         );
       }
     },
-    [params.workspaceId],
+    [nodes, params.workspaceId],
   );
 
   const onNodesChange: OnNodesChange<AppNode> = useCallback(
@@ -416,6 +473,7 @@ export function useGraph(params: {
     createContextNodeAt,
     uploadAssetToContextNode,
     uploadTextToContextNode,
+    persistLayoutNow,
     onNodesChange,
     onEdgesChange,
     onAutoLayout,

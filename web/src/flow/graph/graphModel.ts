@@ -120,11 +120,18 @@ export function buildContextEdgesForSave(params: {
 }): Array<{ fromMessageId: string; toChatId: string; rank: number }> {
   const typeById = new Map(params.nodes.map((n) => [n.id, n.type] as const));
   const nextRankByToChat = new Map<string, number>();
+  const seenPairs = new Set<string>();
 
   return params.edges
     .filter(
       (e) => typeById.get(e.source) === "message" && typeById.get(e.target) === "chat",
     )
+    .filter((e) => {
+      const key = `${e.source}->${e.target}`;
+      if (seenPairs.has(key)) return false;
+      seenPairs.add(key);
+      return true;
+    })
     .map((e) => {
       const current = nextRankByToChat.get(e.target) ?? 0;
       nextRankByToChat.set(e.target, current + 1);
@@ -138,9 +145,16 @@ export function buildContextNodeEdgesForSave(params: {
 }): Array<{ fromContextNodeId: string; toChatId: string; rank: number }> {
   const typeById = new Map(params.nodes.map((n) => [n.id, n.type] as const));
   const nextRankByToChat = new Map<string, number>();
+  const seenPairs = new Set<string>();
 
   return params.edges
     .filter((e) => typeById.get(e.source) === "context" && typeById.get(e.target) === "chat")
+    .filter((e) => {
+      const key = `${e.source}->${e.target}`;
+      if (seenPairs.has(key)) return false;
+      seenPairs.add(key);
+      return true;
+    })
     .map((e) => {
       const current = nextRankByToChat.get(e.target) ?? 0;
       nextRankByToChat.set(e.target, current + 1);

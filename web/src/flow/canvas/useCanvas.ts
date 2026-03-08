@@ -148,7 +148,17 @@ export function useCanvas(): UseCanvasResult {
       deleteChat: graph.deleteChatById,
       updateChatTitle: messaging.updateChatTitle,
       updateChatDraft: messaging.updateChatDraft,
-      sendChatMessage: messaging.sendChatMessage,
+      sendChatMessage: (chatId: string) => {
+        void (async () => {
+          try {
+            await graph.persistLayoutNow();
+          } catch {
+            // If layout save fails, generation likely misses latest context links.
+            return;
+          }
+          await messaging.sendChatMessage(chatId);
+        })();
+      },
       deleteMessage: graph.deleteMessageById,
       deleteContextNode: graph.deleteContextNodeById,
       uploadContextAsset: graph.uploadAssetToContextNode,
@@ -158,6 +168,7 @@ export function useCanvas(): UseCanvasResult {
       graph.deleteChatById,
       graph.deleteContextNodeById,
       graph.deleteMessageById,
+      graph.persistLayoutNow,
       graph.uploadAssetToContextNode,
       graph.uploadTextToContextNode,
       messaging.sendChatMessage,
@@ -217,7 +228,14 @@ export function useCanvas(): UseCanvasResult {
     onToolbarPrimaryAction: () => {
       if (!selectedWorkspaceId) return;
       if (selectedChat?.type === "chat" && selectedChat.data.draft.trim().length > 0) {
-        void messaging.sendChatMessage(selectedChat.id);
+        void (async () => {
+          try {
+            await graph.persistLayoutNow();
+          } catch {
+            return;
+          }
+          await messaging.sendChatMessage(selectedChat.id);
+        })();
         return;
       }
       if (selectedChat?.type === "chat") {
