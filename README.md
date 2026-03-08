@@ -27,20 +27,6 @@ supabase link --project-ref PROJECT_REF
 supabase db push
 ```
 
-## Vultr deployment
-
-Production deployment files are included for a single-VM setup with Docker Compose + Caddy:
-
-- `docker-compose.yml`
-- `api/Dockerfile`
-- `web/Dockerfile`
-- `deploy/Caddyfile`
-- `deploy/deploy.sh`
-- `.github/workflows/deploy.yml`
-- `.env.production.example`
-
-See deployment runbook: `deploy/README.md`.
-
 ### Create a new migration
 
 ```bash
