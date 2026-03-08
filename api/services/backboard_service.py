@@ -20,6 +20,22 @@ class BackboardDocumentResult:
     status: str
 
 
+@dataclass(frozen=True)
+class BackboardDocumentStatus:
+    document_id: str
+    status: str
+    status_message: str | None
+
+
+@dataclass(frozen=True)
+class BackboardHealthResult:
+    status: str
+    detail: str
+    run_status: str | None
+    model_provider: str | None
+    model_name: str | None
+
+
 class BackboardClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
@@ -102,49 +118,145 @@ class BackboardClient:
             raise BackboardServiceError("Backboard document response missing `document_id`.")
         return BackboardDocumentResult(id=document_id, status=status)
 
-    def query_thread(self, *, thread_id: str, prompt: str) -> str:
-        payload = {"content": prompt, "stream": "false"}
-        with httpx.Client(timeout=30.0) as client:
-            resp = client.post(
-                self._url(f"/threads/{thread_id}/messages"),
+    def get_document_status(self, *, document_id: str) -> BackboardDocumentStatus:
+        with httpx.Client(timeout=20.0) as client:
+            resp = client.get(
+                self._url(f"/documents/{document_id}/status"),
                 headers=self._headers(),
-                data=payload,
             )
         if resp.status_code >= 400:
             raise BackboardServiceError(
-                f"Backboard thread query failed ({resp.status_code}): {resp.text}"
+                f"Failed to fetch Backboard document status ({resp.status_code}): {resp.text}"
             )
-        data: Any = resp.json()
+        data = resp.json()
+        returned_id = str(data.get("document_id") or document_id)
+        status = str(data.get("status") or "unknown")
+        status_message_raw = data.get("status_message")
+        status_message = str(status_message_raw) if isinstance(status_message_raw, str) else None
+        return BackboardDocumentStatus(
+            document_id=returned_id,
+            status=status,
+            status_message=status_message,
+        )
 
-        # Backboard responses may vary; extract the most common text fields.
-        if isinstance(data, dict):
-            for key in ("response", "text", "content"):
-                value = data.get(key)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-            message = data.get("message")
-            if isinstance(message, dict):
-                for key in ("content", "text"):
-                    value = message.get(key)
-                    if isinstance(value, str) and value.strip():
-                        return value.strip()
-                    if isinstance(value, list):
-                        extracted = self._extract_text_from_blocks(value)
-                        if extracted:
-                            return extracted
-            choices = data.get("choices")
-            if isinstance(choices, list) and choices:
-                first = choices[0]
-                if isinstance(first, dict):
-                    msg = first.get("message")
-                    if isinstance(msg, dict):
-                        content = msg.get("content")
-                        if isinstance(content, str) and content.strip():
-                            return content.strip()
-                        if isinstance(content, list):
-                            extracted = self._extract_text_from_blocks(content)
-                            if extracted:
-                                return extracted
+    def query_thread(self, *, thread_id: str, prompt: str) -> str:
+        attempts: list[tuple[str, dict[str, Any]]] = [
+            ("form", {"content": prompt, "stream": "false"}),
+            ("json", {"content": prompt, "stream": False}),
+            ("json", {"role": "user", "content": prompt, "stream": False}),
+        ]
+        last_error: str | None = None
+        with httpx.Client(timeout=30.0) as client:
+            for mode, payload in attempts:
+                if mode == "form":
+                    resp = client.post(
+                        self._url(f"/threads/{thread_id}/messages"),
+                        headers=self._headers(),
+                        data=payload,
+                    )
+                else:
+                    resp = client.post(
+                        self._url(f"/threads/{thread_id}/messages"),
+                        headers={**self._headers(), "Content-Type": "application/json"},
+                        content=json.dumps(payload),
+                    )
+
+                if resp.status_code >= 400:
+                    last_error = f"{resp.status_code}: {resp.text}"
+                    continue
+
+                data: Any = resp.json()
+                extracted = self._extract_query_text(data)
+                if extracted:
+                    return extracted
+
+        if last_error:
+            raise BackboardServiceError(f"Backboard thread query failed ({last_error})")
+        return ""
+
+    def probe_health(self) -> BackboardHealthResult:
+        if not self.enabled:
+            return BackboardHealthResult(
+                status="disabled",
+                detail="Backboard API key not configured",
+                run_status=None,
+                model_provider=None,
+                model_name=None,
+            )
+        assistant_id = self.ensure_assistant()
+        thread_id = self.create_thread(assistant_id)
+        with httpx.Client(timeout=30.0) as client:
+            resp = client.post(
+                self._url(f"/threads/{thread_id}/messages"),
+                headers={**self._headers(), "Content-Type": "application/json"},
+                content=json.dumps({"content": "healthcheck", "stream": False}),
+            )
+        if resp.status_code >= 400:
+            raise BackboardServiceError(
+                f"Backboard health probe failed ({resp.status_code}): {resp.text}"
+            )
+        data = resp.json()
+        run_status = str(data.get("status") or "").upper() or None
+        content = str(data.get("content") or "")
+        model_provider = data.get("model_provider")
+        model_name = data.get("model_name")
+        if "No credits available" in content:
+            return BackboardHealthResult(
+                status="no_credits",
+                detail="Backboard run failed due missing credits/subscription.",
+                run_status=run_status,
+                model_provider=str(model_provider) if model_provider else None,
+                model_name=str(model_name) if model_name else None,
+            )
+        if run_status == "FAILED":
+            return BackboardHealthResult(
+                status="run_failed",
+                detail="Backboard run failed for provider/model configuration reasons.",
+                run_status=run_status,
+                model_provider=str(model_provider) if model_provider else None,
+                model_name=str(model_name) if model_name else None,
+            )
+        return BackboardHealthResult(
+            status="ok",
+            detail="Backboard run/write path is healthy.",
+            run_status=run_status,
+            model_provider=str(model_provider) if model_provider else None,
+            model_name=str(model_name) if model_name else None,
+        )
+
+    def _extract_query_text(self, payload: Any) -> str:
+        if isinstance(payload, str):
+            return payload.strip()
+        if isinstance(payload, list):
+            return self._extract_text_from_blocks(payload)
+        if not isinstance(payload, dict):
+            return ""
+
+        for key in ("response", "answer", "output_text", "text", "content"):
+            value = payload.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+            if isinstance(value, list):
+                extracted = self._extract_text_from_blocks(value)
+                if extracted:
+                    return extracted
+            if isinstance(value, dict):
+                extracted = self._extract_query_text(value)
+                if extracted:
+                    return extracted
+
+        for key in ("message", "result", "data", "output"):
+            value = payload.get(key)
+            extracted = self._extract_query_text(value)
+            if extracted:
+                return extracted
+
+        choices = payload.get("choices")
+        if isinstance(choices, list) and choices:
+            for item in choices:
+                extracted = self._extract_query_text(item)
+                if extracted:
+                    return extracted
         return ""
 
     @staticmethod

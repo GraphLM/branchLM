@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import chats, context_nodes, graph, health, messages, workspaces
+from routers import backboard, chats, context_nodes, graph, health, messages, workspaces
 from services.backboard_service import BackboardClient
 from services.llm_service import OpenRouterClient
 from services.metrics import AppMetrics
@@ -59,6 +59,7 @@ def create_app() -> FastAPI:
     app.include_router(chats.router)
     app.include_router(messages.router)
     app.include_router(context_nodes.router)
+    app.include_router(backboard.router)
     return app
 
 
