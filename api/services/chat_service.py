@@ -15,7 +15,6 @@ from schemas import (
     PatchWorkspaceBody,
 )
 from services.backboard_service import BackboardClient, BackboardServiceError
-from services.llm_service import LLMConfigurationError, LLMServiceError, OpenRouterClient
 from services.metrics import AppMetrics
 from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
@@ -94,14 +93,12 @@ class ChatGenerationService:
         self,
         *,
         store: Store,
-        llm_client: OpenRouterClient,
         rate_limiter: SlidingWindowRateLimiter,
         settings: Settings,
         metrics: AppMetrics,
         backboard: BackboardClient,
     ) -> None:
         self._store = store
-        self._llm_client = llm_client
         self._rate_limiter = rate_limiter
         self._settings = settings
         self._metrics = metrics
@@ -426,46 +423,20 @@ class ChatGenerationService:
         return source_context, chat_history
 
     def _call_llm(self, conversation: list[dict[str, str]], *, model: str) -> str:
-        current_conversation = conversation
-        for attempt in range(2):
-            try:
-                return self._llm_client.generate_reply(current_conversation, model=model)
-            except LLMConfigurationError as exc:
-                raise HTTPException(
-                    status_code=503,
-                    detail="The language model is not configured on the server.",
-                ) from exc
-            except LLMServiceError as exc:
-                if (
-                    exc.code == "context_length_exceeded"
-                    and attempt == 0
-                    and len(current_conversation) > 2
-                ):
-                    tightened = self._tighten_conversation(current_conversation)
-                    if len(tightened) < len(current_conversation):
-                        self._metrics.incr("context.overflow_retries")
-                        logger.warning(
-                            (
-                                "context_overflow_retry model=%s "
-                                "original_messages=%d tightened_messages=%d"
-                            ),
-                            model,
-                            len(current_conversation),
-                            len(tightened),
-                        )
-                        current_conversation = tightened
-                        continue
-                raise HTTPException(status_code=502, detail=str(exc)) from exc
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=502,
-                    detail="The language model is temporarily unavailable.",
-                ) from exc
-
-        raise HTTPException(
-            status_code=502,
-            detail="The language model is temporarily unavailable.",
-        )
+        if not self._backboard.enabled:
+            raise HTTPException(
+                status_code=503,
+                detail="Backboard is not configured on the server.",
+            )
+        try:
+            return self._backboard.generate_reply(messages=conversation, model=model)
+        except BackboardServiceError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail="The language model is temporarily unavailable.",
+            ) from exc
 
     def _max_input_tokens(self, model: str) -> int:
         context_window = self._settings.model_context_window_overrides.get(
