@@ -17,6 +17,7 @@ class FakeBackboardClient:
         self.chat_reply = chat_reply
         self.fail_generate = fail_generate
         self.generate_calls: list[list[dict[str, str]]] = []
+        self.generate_web_search: list[bool] = []
 
     def ensure_assistant(self) -> str:
         return "assistant-1"
@@ -42,9 +43,14 @@ class FakeBackboardClient:
         return self.chat_reply
 
     def generate_reply(
-        self, messages: list[dict[str, str]], *, model: str | None = None
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        web_search: bool = False,
     ) -> str:
         self.generate_calls.append(list(messages))
+        self.generate_web_search.append(web_search)
         if self.fail_generate:
             raise Exception("internal details should not leak")
         return self.chat_reply
@@ -141,6 +147,57 @@ def test_generate_reply_persists_user_and_app_messages() -> None:
     assert payload["appMessage"]["text"] == "Real model reply"
     assert payload["appMessage"]["role"] == "app"
     assert fake_backboard.generate_calls[0][-1] == {"role": "user", "content": "Hello there"}
+
+
+def test_generate_reply_passes_web_search_flag_to_backboard() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Real model reply")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
+        json={"text": "Latest news please", "webSearch": True},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    assert fake_backboard.generate_web_search[-1] is True
+
+
+def test_generate_reply_guides_when_web_search_is_off_for_freshness_queries() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Real model reply")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
+        json={
+            "text": "Find one major AI news event from the last 7 days with source URL.",
+            "webSearch": False,
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "Web search is currently off" in payload["appMessage"]["text"]
+    assert fake_backboard.generate_calls == []
 
 
 def test_generate_reply_rate_limits_requests() -> None:

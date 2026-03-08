@@ -119,7 +119,7 @@ export function createChatNode(params: {
     id: params.id,
     type: "chat",
     position: params.position,
-    data: { title: params.title, draft: "" },
+    data: { title: params.title, draft: "", webSearchEnabled: false },
     style: { width: CHAT_WIDTH, height: CHAT_MIN_HEIGHT },
     dragHandle: ".chat-drag-handle",
     zIndex: 0,

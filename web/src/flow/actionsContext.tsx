@@ -6,6 +6,7 @@ export type FlowActions = {
   openContextPreview(chatId: string): void;
   updateChatTitle(chatId: string, title: string): void;
   updateChatDraft(chatId: string, draft: string): void;
+  toggleChatWebSearch(chatId: string): void;
   sendChatMessage(chatId: string): void;
   deleteMessage(messageId: string): void;
   deleteContextNode(contextNodeId: string): void;

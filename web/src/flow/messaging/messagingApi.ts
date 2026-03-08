@@ -45,6 +45,7 @@ export async function generateReply(params: {
   workspaceId: string;
   chatId: string;
   text: string;
+  webSearch?: boolean;
 }): Promise<
   | {
       userMessage: { id: string; chatId: string; ordinal: number; role: "user"; text: string };
@@ -57,7 +58,7 @@ export async function generateReply(params: {
     {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ text: params.text }),
+    body: JSON.stringify({ text: params.text, webSearch: Boolean(params.webSearch) }),
     },
   );
   if (!res.ok) return null;

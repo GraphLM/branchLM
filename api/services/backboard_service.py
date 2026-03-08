@@ -69,7 +69,10 @@ class BackboardClient:
         name = f"branchlm-context-{uuid.uuid4().hex[:8]}"
         payload = {
             "name": name,
-            "system_prompt": "You help retrieve concise context from uploaded documents.",
+            "system_prompt": (
+                "You are a helpful assistant. "
+                "When web search is enabled for a message, use it for fresh facts."
+            ),
             "model": desired_model,
         }
         with httpx.Client(timeout=20.0) as client:
@@ -147,11 +150,21 @@ class BackboardClient:
             status_message=status_message,
         )
 
-    def query_thread(self, *, thread_id: str, prompt: str) -> str:
+    def query_thread(self, *, thread_id: str, prompt: str, web_search: bool = False) -> str:
+        search_mode = "Auto" if web_search else "Off"
         attempts: list[tuple[str, dict[str, Any]]] = [
-            ("form", {"content": prompt, "stream": "false"}),
-            ("json", {"content": prompt, "stream": False}),
-            ("json", {"role": "user", "content": prompt, "stream": False}),
+            ("form", {"content": prompt, "stream": "false", "web_search": search_mode}),
+            ("form", {"content": prompt, "stream": "false", "web_search": str(web_search).lower()}),
+            ("json", {"content": prompt, "stream": False, "web_search": search_mode}),
+            ("json", {"content": prompt, "stream": False, "web_search": web_search}),
+            (
+                "json",
+                {"role": "user", "content": prompt, "stream": False, "web_search": search_mode},
+            ),
+            (
+                "json",
+                {"role": "user", "content": prompt, "stream": False, "web_search": web_search},
+            ),
         ]
         last_error: str | None = None
         with httpx.Client(timeout=30.0) as client:
@@ -183,12 +196,16 @@ class BackboardClient:
         return ""
 
     def generate_reply(
-        self, *, messages: Sequence[dict[str, str]], model: str | None = None
+        self,
+        *,
+        messages: Sequence[dict[str, str]],
+        model: str | None = None,
+        web_search: bool = False,
     ) -> str:
         assistant_id = self.ensure_assistant(model=model)
         thread_id = self.create_thread(assistant_id)
         prompt = self._format_conversation_for_prompt(messages)
-        reply = self.query_thread(thread_id=thread_id, prompt=prompt).strip()
+        reply = self.query_thread(thread_id=thread_id, prompt=prompt, web_search=web_search).strip()
         if not reply:
             raise BackboardServiceError("Backboard returned an empty completion.")
         return reply

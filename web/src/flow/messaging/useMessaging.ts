@@ -41,6 +41,27 @@ export function useMessaging(params: {
     [params],
   );
 
+  const toggleChatWebSearch = useCallback(
+    (chatId: string) => {
+      params.setNodes((ns) =>
+        applyAutoLayout(
+          ns.map((n) =>
+            n.id === chatId && n.type === "chat"
+              ? {
+                  ...n,
+                  data: {
+                    ...n.data,
+                    webSearchEnabled: !Boolean(n.data.webSearchEnabled),
+                  },
+                }
+              : n,
+          ),
+        ),
+      );
+    },
+    [params],
+  );
+
   const sendChatMessage = useCallback(
     async (chatId: string) => {
       if (!params.workspaceId) return;
@@ -85,7 +106,12 @@ export function useMessaging(params: {
         ),
       );
 
-      const generated = await generateReply({ workspaceId: params.workspaceId, chatId, text });
+      const generated = await generateReply({
+        workspaceId: params.workspaceId,
+        chatId,
+        text,
+        webSearch: Boolean(chat.data.webSearchEnabled),
+      });
       if (!generated) {
         params.setNodes((ns) =>
           applyAutoLayout(
@@ -201,6 +227,7 @@ export function useMessaging(params: {
   return {
     updateChatDraft,
     updateChatTitle,
+    toggleChatWebSearch,
     sendChatMessage,
     focusChatDraft,
     createChatDraft,

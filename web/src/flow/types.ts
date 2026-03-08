@@ -3,6 +3,7 @@ import type { Node } from "@xyflow/react";
 export type ChatNodeData = {
   title: string;
   draft: string;
+  webSearchEnabled?: boolean;
   focusToken?: number;
 };
 
