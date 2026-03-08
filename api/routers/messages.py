@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Request
 
 from deps import get_store, get_user_id
-from schemas import CreateMessageBody, GenerateReplyBody
+from schemas import ContextPreviewBody, CreateMessageBody, GenerateReplyBody
 from services.chat_service import ChatGenerationService, MessageService
 from store.base import Store
 
@@ -51,6 +51,30 @@ def generate_chat_reply(
         chat_id=chat_id,
         body=body,
         client_ip=client_host,
+    )
+
+
+@router.post("/api/workspaces/{workspace_id}/chats/{chat_id}/context-preview")
+def preview_chat_context(
+    workspace_id: str,
+    chat_id: str,
+    body: ContextPreviewBody,
+    request: Request,
+    user_id: Annotated[str, Depends(get_user_id)],
+    store: Annotated[Store, Depends(get_store)],
+) -> dict:
+    service = ChatGenerationService(
+        store=store,
+        llm_client=request.app.state.llm_client,
+        rate_limiter=request.app.state.rate_limiter,
+        settings=request.app.state.settings,
+        metrics=request.app.state.metrics,
+    )
+    return service.preview_chat_context(
+        user_id=user_id,
+        workspace_id=workspace_id,
+        chat_id=chat_id,
+        body=body,
     )
 
 

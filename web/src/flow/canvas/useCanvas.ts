@@ -3,6 +3,10 @@ import { useReactFlow } from "@xyflow/react";
 import type { FlowActions } from "../actionsContext";
 import { useConnections } from "../connections/useConnections";
 import { useGraph } from "../graph/useGraph";
+import {
+  fetchContextPreview,
+  type ContextPreviewDTO,
+} from "../messaging/messagingApi";
 import { useMessaging } from "../messaging/useMessaging";
 import { usePanel } from "../panel/usePanel";
 import {
@@ -37,6 +41,10 @@ export function useCanvas(): UseCanvasResult {
   const { screenToFlowPosition, getNode, setCenter, fitView } = useReactFlow();
   const [workspaces, setWorkspaces] = useState<WorkspaceDTO[]>([]);
   const [selectedWorkspaceId, setSelectedWorkspaceId] = useState<string | null>(null);
+  const [previewChatId, setPreviewChatId] = useState<string | null>(null);
+  const [previewData, setPreviewData] = useState<ContextPreviewDTO | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +103,9 @@ export function useCanvas(): UseCanvasResult {
   const onWorkspaceSelect = useCallback((workspaceId: string) => {
     setSelectedWorkspaceId(workspaceId);
     setWorkspaceIdInUrl(workspaceId);
+    setPreviewChatId(null);
+    setPreviewData(null);
+    setPreviewError(null);
   }, []);
 
   const onWorkspaceCreate = useCallback(async () => {
@@ -146,6 +157,35 @@ export function useCanvas(): UseCanvasResult {
   const actions = useMemo<FlowActions>(
     () => ({
       deleteChat: graph.deleteChatById,
+      openContextPreview: (chatId: string) => {
+        if (!selectedWorkspaceId) return;
+        const chatNode = graph.nodes.find((n) => n.type === "chat" && n.id === chatId);
+        const prompt = chatNode?.type === "chat" ? chatNode.data.draft : "";
+
+        setPreviewChatId(chatId);
+        setPreviewLoading(true);
+        setPreviewError(null);
+        setPreviewData(null);
+
+        fetchContextPreview({
+          workspaceId: selectedWorkspaceId,
+          chatId,
+          prompt,
+        })
+          .then((data) => {
+            if (!data) {
+              setPreviewError("Failed to load context preview.");
+              return;
+            }
+            setPreviewData(data);
+          })
+          .catch(() => {
+            setPreviewError("Failed to load context preview.");
+          })
+          .finally(() => {
+            setPreviewLoading(false);
+          });
+      },
       updateChatTitle: messaging.updateChatTitle,
       updateChatDraft: messaging.updateChatDraft,
       sendChatMessage: messaging.sendChatMessage,
@@ -154,9 +194,11 @@ export function useCanvas(): UseCanvasResult {
     [
       graph.deleteChatById,
       graph.deleteMessageById,
+      graph.nodes,
       messaging.sendChatMessage,
       messaging.updateChatDraft,
       messaging.updateChatTitle,
+      selectedWorkspaceId,
     ],
   );
 
@@ -164,6 +206,22 @@ export function useCanvas(): UseCanvasResult {
     () => graph.nodes.find((n) => n.type === "chat" && n.selected),
     [graph.nodes],
   );
+  const previewChatTitle = useMemo(() => {
+    if (!previewChatId) return "";
+    const chat = graph.nodes.find((n) => n.type === "chat" && n.id === previewChatId);
+    return chat?.type === "chat" ? chat.data.title : "";
+  }, [graph.nodes, previewChatId]);
+
+  useEffect(() => {
+    if (!previewChatId) return;
+    const exists = graph.nodes.some((n) => n.type === "chat" && n.id === previewChatId);
+    if (exists) return;
+    setPreviewChatId(null);
+    setPreviewData(null);
+    setPreviewError(null);
+    setPreviewLoading(false);
+  }, [graph.nodes, previewChatId]);
+
   const toolbarPrimaryMode: "send" | "new-chat" =
     selectedChat && selectedChat.type === "chat" && selectedChat.data.draft.trim().length > 0
       ? "send"
@@ -176,6 +234,11 @@ export function useCanvas(): UseCanvasResult {
     workspacesForPanel: workspaces,
     panelOpen: panel.panelOpen,
     chatsForPanel: panel.chatsForPanel,
+    previewChatId,
+    previewChatTitle,
+    previewData,
+    previewLoading,
+    previewError,
     isLocked: graph.isLocked,
     toolbarPrimaryMode,
     actions,
@@ -199,6 +262,12 @@ export function useCanvas(): UseCanvasResult {
     onWorkspaceCreate,
     onWorkspaceRename,
     onWorkspaceDelete,
+    onContextPreviewClose: () => {
+      setPreviewChatId(null);
+      setPreviewData(null);
+      setPreviewError(null);
+      setPreviewLoading(false);
+    },
     onToolbarPrimaryAction: () => {
       if (!selectedWorkspaceId) return;
       if (selectedChat?.type === "chat" && selectedChat.data.draft.trim().length > 0) {

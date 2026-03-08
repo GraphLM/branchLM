@@ -3,6 +3,7 @@ import { createContext, useContext, type ReactNode } from "react";
 
 export type FlowActions = {
   deleteChat(chatId: string): void;
+  openContextPreview(chatId: string): void;
   updateChatTitle(chatId: string, title: string): void;
   updateChatDraft(chatId: string, draft: string): void;
   sendChatMessage(chatId: string): void;
