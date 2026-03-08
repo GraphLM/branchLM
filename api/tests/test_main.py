@@ -206,6 +206,35 @@ def test_generate_reply_rejects_empty_or_oversized_input() -> None:
     assert long_resp.status_code == 400
 
 
+def test_context_preview_returns_included_messages() -> None:
+    app = create_app()
+    app.state.settings = replace(app.state.settings, auth_dev_bypass=True)
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+        json={"role": "user", "text": "hello"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+        json={"role": "app", "text": "hi there"},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/context-preview",
+        json={"prompt": "what did we discuss?"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["chatId"] == chat_id
+    assert payload["counts"]["included"] >= 2
+
+
 def test_generate_reply_surfaces_safe_provider_errors() -> None:
     app = create_app()
     app.state.settings = replace(
