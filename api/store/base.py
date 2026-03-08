@@ -80,6 +80,16 @@ class Store(Protocol):
         status: str,
         status_message: str | None,
     ) -> dict[str, Any]: ...
+    def delete_context_node_assets(
+        self, user_id: str, workspace_id: str, context_node_id: str
+    ) -> None: ...
+    def update_context_node_thread_id(
+        self,
+        user_id: str,
+        workspace_id: str,
+        context_node_id: str,
+        backboard_thread_id: str | None,
+    ) -> None: ...
 
     def create_message(
         self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 from fastapi import HTTPException, UploadFile
 
 from services.backboard_service import BackboardClient, BackboardServiceError
@@ -74,12 +76,17 @@ class ContextNodeService:
         workspace_id: str,
         context_node_id: str,
         file: UploadFile,
+        replace_existing: bool = False,
     ) -> dict:
-        self._ensure_single_asset_slot(
-            user_id=user_id, workspace_id=workspace_id, context_node_id=context_node_id
+        self._prepare_node_for_upload(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            context_node_id=context_node_id,
+            replace_existing=replace_existing,
         )
         file_name = file.filename or "upload.bin"
         mime_type = file.content_type or "application/octet-stream"
+        self._validate_upload_type(file_name=file_name, mime_type=mime_type)
         content = await file.read()
         size_bytes = len(content)
         if size_bytes == 0:
@@ -115,7 +122,10 @@ class ContextNodeService:
                 mime_type=mime_type,
             )
             backboard_document_id = result.id
-            status = result.status or "processing"
+            status = self._wait_for_document_status(
+                document_id=result.id,
+                initial_status=result.status,
+            )
         except BackboardServiceError as exc:
             status = "failed"
             status_message = str(exc)
@@ -147,9 +157,13 @@ class ContextNodeService:
         workspace_id: str,
         context_node_id: str,
         text: str,
+        replace_existing: bool = False,
     ) -> dict:
-        self._ensure_single_asset_slot(
-            user_id=user_id, workspace_id=workspace_id, context_node_id=context_node_id
+        self._prepare_node_for_upload(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            context_node_id=context_node_id,
+            replace_existing=replace_existing,
         )
         normalized = text.strip()
         if not normalized:
@@ -186,7 +200,10 @@ class ContextNodeService:
                 mime_type=mime_type,
             )
             backboard_document_id = result.id
-            status = result.status or "processing"
+            status = self._wait_for_document_status(
+                document_id=result.id,
+                initial_status=result.status,
+            )
         except BackboardServiceError as exc:
             status = "failed"
             status_message = str(exc)
@@ -226,4 +243,68 @@ class ContextNodeService:
             raise HTTPException(
                 status_code=409,
                 detail="This context node already has content. Use one file/text source per node.",
+            )
+
+    def _prepare_node_for_upload(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        context_node_id: str,
+        replace_existing: bool,
+    ) -> None:
+        existing = self._store.list_context_node_assets(user_id, workspace_id, context_node_id)
+        if not existing:
+            return
+        if not replace_existing:
+            self._ensure_single_asset_slot(
+                user_id=user_id,
+                workspace_id=workspace_id,
+                context_node_id=context_node_id,
+            )
+            return
+        self._store.delete_context_node_assets(user_id, workspace_id, context_node_id)
+        if self._backboard.enabled:
+            try:
+                assistant_id = self._backboard.ensure_assistant()
+                new_thread_id = self._backboard.create_thread(assistant_id)
+            except BackboardServiceError as exc:
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Backboard is unavailable while replacing context source: {exc}",
+                ) from exc
+            self._store.update_context_node_thread_id(
+                user_id, workspace_id, context_node_id, new_thread_id
+            )
+
+    def _wait_for_document_status(self, *, document_id: str, initial_status: str | None) -> str:
+        status = (initial_status or "processing").lower()
+        if status in {"indexed", "processed", "ready", "completed"}:
+            return "indexed"
+        # Best-effort wait so user can query immediately after upload.
+        for _ in range(10):
+            time.sleep(0.5)
+            try:
+                result = self._backboard.get_document_status(document_id=document_id)
+            except BackboardServiceError:
+                break
+            current = result.status.lower()
+            if current in {"indexed", "processed", "ready", "completed"}:
+                return "indexed"
+            if current in {"failed", "error"}:
+                return "failed"
+        return "processing"
+
+    @staticmethod
+    def _validate_upload_type(*, file_name: str, mime_type: str) -> None:
+        lower_name = file_name.lower()
+        if mime_type.startswith("image/") or lower_name.endswith(
+            (".png", ".jpg", ".jpeg", ".gif", ".webp")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Images are not supported in MVP context nodes. "
+                    "Upload a document or paste text."
+                ),
             )

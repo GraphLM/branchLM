@@ -736,6 +736,60 @@ class SupabaseStore:
             raise HTTPException(status_code=500, detail="Failed to create context node asset")
         return created[0]
 
+    def delete_context_node_assets(
+        self, user_id: str, workspace_id: str, context_node_id: str
+    ) -> None:
+        if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        try:
+            self._wrap_postgrest(
+                "delete context node assets",
+                lambda: (
+                    self._client.table("context_node_assets")
+                    .delete()
+                    .eq("user_id", user_id)
+                    .eq("context_node_id", context_node_id)
+                    .execute()
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+
+    def update_context_node_thread_id(
+        self,
+        user_id: str,
+        workspace_id: str,
+        context_node_id: str,
+        backboard_thread_id: str | None,
+    ) -> None:
+        if context_node_id not in self._workspace_context_node_ids(user_id, workspace_id):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        now = datetime.now(timezone.utc).isoformat()
+        try:
+            self._wrap_postgrest(
+                "update context node thread id",
+                lambda: (
+                    self._client.table("context_nodes")
+                    .update({"backboard_thread_id": backboard_thread_id, "updated_at": now})
+                    .eq("id", context_node_id)
+                    .eq("user_id", user_id)
+                    .eq("workspace_id", workspace_id)
+                    .execute()
+                ),
+            )
+        except HTTPException as exc:
+            if self._is_missing_context_node_table_error(exc):
+                raise HTTPException(
+                    status_code=500,
+                    detail="Context nodes require latest database migrations.",
+                ) from exc
+            raise
+
     def create_message(
         self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str
     ) -> dict[str, Any]:

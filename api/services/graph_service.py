@@ -48,9 +48,12 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
                 "workspaceId": n["workspace_id"],
                 "title": n["title"],
                 "position": {"x": n["position_x"], "y": n["position_y"]},
-                "assetCount": len(store.list_context_node_assets(user_id, workspace_id, n["id"])),
+                "assetCount": len(assets),
+                "status": (assets[-1].get("status") if assets else None),
+                "statusMessage": (assets[-1].get("status_message") if assets else None),
             }
             for n in context_nodes
+            for assets in [store.list_context_node_assets(user_id, workspace_id, n["id"])]
         ],
         "contextNodeEdges": [
             {

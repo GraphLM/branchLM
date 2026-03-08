@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 
 from deps import get_backboard_client, get_store, get_user_id
 from schemas import CreateContextNodeBody, CreateContextNodeTextAssetBody
@@ -68,12 +68,14 @@ async def upload_context_node_asset(
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
     backboard: Annotated[BackboardClient, Depends(get_backboard_client)],
+    replace: Annotated[bool, Query()] = False,
 ) -> dict:
     return await ContextNodeService(store=store, backboard=backboard).upload_asset(
         user_id=user_id,
         workspace_id=workspace_id,
         context_node_id=context_node_id,
         file=file,
+        replace_existing=replace,
     )
 
 
@@ -85,10 +87,12 @@ async def upload_context_node_text_asset(
     user_id: Annotated[str, Depends(get_user_id)],
     store: Annotated[Store, Depends(get_store)],
     backboard: Annotated[BackboardClient, Depends(get_backboard_client)],
+    replace: Annotated[bool, Query()] = False,
 ) -> dict:
     return await ContextNodeService(store=store, backboard=backboard).upload_text_asset(
         user_id=user_id,
         workspace_id=workspace_id,
         context_node_id=context_node_id,
         text=body.text,
+        replace_existing=replace,
     )

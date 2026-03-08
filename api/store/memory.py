@@ -444,6 +444,39 @@ class MemoryStore:
         self._context_node_assets[asset_id] = row
         return row
 
+    def delete_context_node_assets(
+        self, user_id: str, workspace_id: str, context_node_id: str
+    ) -> None:
+        node = self._context_nodes.get(context_node_id)
+        if (
+            not node
+            or node["user_id"] != user_id
+            or node["workspace_id"] != workspace_id
+            or not self.workspace_exists(user_id, workspace_id)
+        ):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        for asset_id, asset in list(self._context_node_assets.items()):
+            if asset["user_id"] == user_id and asset["context_node_id"] == context_node_id:
+                del self._context_node_assets[asset_id]
+
+    def update_context_node_thread_id(
+        self,
+        user_id: str,
+        workspace_id: str,
+        context_node_id: str,
+        backboard_thread_id: str | None,
+    ) -> None:
+        node = self._context_nodes.get(context_node_id)
+        if (
+            not node
+            or node["user_id"] != user_id
+            or node["workspace_id"] != workspace_id
+            or not self.workspace_exists(user_id, workspace_id)
+        ):
+            raise HTTPException(status_code=404, detail="Context node not found")
+        node["backboard_thread_id"] = backboard_thread_id
+        node["updated_at"] = datetime.now(timezone.utc).isoformat()
+
     def create_message(
         self, user_id: str, workspace_id: str, chat_id: str, role: str, text: str
     ) -> dict[str, Any]:
