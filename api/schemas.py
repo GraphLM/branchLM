@@ -49,6 +49,7 @@ class CreateMessageBody(BaseModel):
 class GenerateReplyBody(BaseModel):
     text: str
     model: str | None = None
+    webSearch: bool | None = None
 
 
 class ContextPreviewBody(BaseModel):
