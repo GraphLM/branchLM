@@ -171,6 +171,10 @@ export function useGraph(params: {
                 : status === "failed"
                   ? n.statusMessage ?? "Could not prepare document"
                   : n.statusMessage ?? undefined;
+          const sourceLabel =
+            n.sourceMimeType === "text/plain" && n.sourceFileName === "context.txt"
+              ? "Pasted text"
+              : (n.sourceFileName ?? undefined);
           nextNodes.push(
             createContextNode({
               id: n.id,
@@ -179,6 +183,7 @@ export function useGraph(params: {
               title: n.title,
               assetCount: n.assetCount ?? 0,
               statusText,
+              sourceLabel,
             }),
           );
         }
@@ -374,6 +379,7 @@ export function useGraph(params: {
                 ...n.data,
                 title: suggestTitleFromFileName(file.name),
                 assetCount: 1,
+                sourceLabel: created.fileName,
                 statusText:
                   created.status === "failed"
                     ? created.statusMessage ?? "Upload failed"
@@ -420,6 +426,7 @@ export function useGraph(params: {
                 ...n.data,
                 title: suggestTitleFromText(text),
                 assetCount: 1,
+                sourceLabel: "Pasted text",
                 statusText:
                   created.status === "failed"
                     ? created.statusMessage ?? "Upload failed"

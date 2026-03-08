@@ -37,6 +37,8 @@ export type GraphContextNodeDTO = {
   assetCount?: number;
   status?: string | null;
   statusMessage?: string | null;
+  sourceFileName?: string | null;
+  sourceMimeType?: string | null;
 };
 
 export type GraphContextNodeEdgeDTO = {

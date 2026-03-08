@@ -51,6 +51,8 @@ def get_graph(*, user_id: str, workspace_id: str, store: Store) -> dict[str, Any
                 "assetCount": len(assets),
                 "status": (assets[-1].get("status") if assets else None),
                 "statusMessage": (assets[-1].get("status_message") if assets else None),
+                "sourceFileName": (assets[-1].get("file_name") if assets else None),
+                "sourceMimeType": (assets[-1].get("mime_type") if assets else None),
             }
             for n in context_nodes
             for assets in [store.list_context_node_assets(user_id, workspace_id, n["id"])]

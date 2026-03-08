@@ -18,6 +18,7 @@ export type ContextNodeData = {
   workspaceId: string;
   assetCount: number;
   statusText?: string;
+  sourceLabel?: string;
 };
 
 export type ChatNode = Node<ChatNodeData, "chat">;

@@ -645,6 +645,8 @@ def test_context_node_rejects_image_uploads_in_mvp() -> None:
 
 def test_generate_reply_uses_context_node_external_rag_context() -> None:
     app = create_app()
+    app.state.store = MemoryStore()
+    app.state.supabase_admin = None
     app.state.settings = replace(
         app.state.settings,
         openrouter_api_key="test-key",

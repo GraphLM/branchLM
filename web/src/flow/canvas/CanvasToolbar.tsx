@@ -61,8 +61,6 @@ export default function CanvasToolbar({
       <div
         className="relative flex items-center gap-1 rounded-xl border border-(--panel-border) bg-(--panel-bg) p-1 elev-2 backdrop-blur"
         onMouseDown={(e) => e.stopPropagation()}
-        onMouseEnter={openNodeMenu}
-        onMouseLeave={scheduleCloseNodeMenu}
       >
         <button
           type="button"
@@ -114,7 +112,11 @@ export default function CanvasToolbar({
           )}
         </button>
         <div className="mx-1 h-6 w-px bg-(--panel-border)" />
-        <div className="relative">
+        <div
+          className="relative"
+          onMouseEnter={openNodeMenu}
+          onMouseLeave={scheduleCloseNodeMenu}
+        >
           <button
             type="button"
             className={buttonBase}

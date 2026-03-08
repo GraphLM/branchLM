@@ -163,6 +163,7 @@ export function createContextNode(params: {
   title: string;
   assetCount?: number;
   statusText?: string;
+  sourceLabel?: string;
 }): ContextNode {
   return {
     id: params.id,
@@ -173,6 +174,7 @@ export function createContextNode(params: {
       workspaceId: params.workspaceId,
       assetCount: params.assetCount ?? 0,
       statusText: params.statusText,
+      sourceLabel: params.sourceLabel,
     },
     style: { width: CONTEXT_NODE_WIDTH, height: CONTEXT_NODE_HEIGHT },
     dragHandle: ".context-drag-handle",

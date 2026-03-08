@@ -14,6 +14,7 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
   const [titleDraft, setTitleDraft] = useState(data.title);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const hasSource = data.assetCount > 0;
+  const isTextSource = data.sourceLabel === "Pasted text";
 
   const commitTitle = () => {
     const next = titleDraft.trim();
@@ -67,6 +68,9 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
             : "border-(--chat-border)",
         ].join(" ")}
       >
+        {hasSource && data.sourceLabel ? (
+          <p className="text-xs text-(--panel-muted)">File: {data.sourceLabel}</p>
+        ) : null}
         <p className="text-xs text-(--panel-muted)">
           {data.statusText ?? "Add one file or one text note for this node."}
         </p>
@@ -94,7 +98,7 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
           onClick={() => inputRef.current?.click()}
           disabled={busy}
         >
-          {busy ? "Uploading..." : hasSource ? "Replace file" : "Import file"}
+          {busy ? "Uploading..." : hasSource ? "Replace file" : "Insert file"}
         </button>
 
         <button
@@ -103,7 +107,7 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
           onClick={() => setTextMode((prev) => !prev)}
           disabled={busy}
         >
-          {hasSource ? "Replace text" : "Paste text"}
+          {hasSource ? (isTextSource ? "Edit text" : "Replace text") : "Insert text"}
         </button>
 
         {textMode ? (
@@ -136,7 +140,7 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
                   .finally(() => setBusy(false));
               }}
             >
-              {busy ? "Saving..." : "Save pasted text"}
+              {busy ? "Saving..." : "Save text"}
             </button>
           </div>
         ) : null}
