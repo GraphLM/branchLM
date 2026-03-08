@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -39,6 +40,7 @@ class BackboardHealthResult:
 class BackboardClient:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
+        self._assistant_by_model: dict[str, str] = {}
 
     @property
     def enabled(self) -> bool:
@@ -55,15 +57,20 @@ class BackboardClient:
     def _url(self, path: str) -> str:
         return f"{self._settings.backboard_base_url.rstrip('/')}/{path.lstrip('/')}"
 
-    def ensure_assistant(self) -> str:
+    def ensure_assistant(self, *, model: str | None = None) -> str:
         if self._settings.backboard_assistant_id:
             return self._settings.backboard_assistant_id
+
+        desired_model = (model or self._settings.openrouter_model).strip()
+        cached_id = self._assistant_by_model.get(desired_model)
+        if cached_id:
+            return cached_id
 
         name = f"branchlm-context-{uuid.uuid4().hex[:8]}"
         payload = {
             "name": name,
             "system_prompt": "You help retrieve concise context from uploaded documents.",
-            "model": "openai/gpt-4o-mini",
+            "model": desired_model,
         }
         with httpx.Client(timeout=20.0) as client:
             resp = client.post(
@@ -79,6 +86,7 @@ class BackboardClient:
         assistant_id = str(data.get("assistant_id") or data.get("id") or "")
         if not assistant_id:
             raise BackboardServiceError("Backboard assistant response missing `assistant_id`.")
+        self._assistant_by_model[desired_model] = assistant_id
         return assistant_id
 
     def create_thread(self, assistant_id: str) -> str:
@@ -173,6 +181,17 @@ class BackboardClient:
         if last_error:
             raise BackboardServiceError(f"Backboard thread query failed ({last_error})")
         return ""
+
+    def generate_reply(
+        self, *, messages: Sequence[dict[str, str]], model: str | None = None
+    ) -> str:
+        assistant_id = self.ensure_assistant(model=model)
+        thread_id = self.create_thread(assistant_id)
+        prompt = self._format_conversation_for_prompt(messages)
+        reply = self.query_thread(thread_id=thread_id, prompt=prompt).strip()
+        if not reply:
+            raise BackboardServiceError("Backboard returned an empty completion.")
+        return reply
 
     def probe_health(self) -> BackboardHealthResult:
         if not self.enabled:
@@ -273,3 +292,23 @@ class BackboardClient:
             if isinstance(nested, str) and nested.strip():
                 parts.append(nested.strip())
         return "\n".join(parts).strip()
+
+    @staticmethod
+    def _format_conversation_for_prompt(messages: Sequence[dict[str, str]]) -> str:
+        lines = [
+            "Continue this conversation and return only the assistant's next reply.",
+            "Conversation:",
+        ]
+        for message in messages:
+            role = str(message.get("role") or "user").strip().lower()
+            if role == "assistant":
+                label = "Assistant"
+            elif role == "system":
+                label = "System"
+            else:
+                label = "User"
+            content = str(message.get("content") or "").strip()
+            if content:
+                lines.append(f"{label}: {content}")
+        lines.append("Assistant:")
+        return "\n".join(lines)

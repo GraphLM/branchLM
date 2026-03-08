@@ -6,7 +6,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from routers import backboard, chats, context_nodes, graph, health, messages, workspaces
 from services.backboard_service import BackboardClient
-from services.llm_service import OpenRouterClient
 from services.metrics import AppMetrics
 from services.rate_limit import SlidingWindowRateLimiter
 from settings import Settings
@@ -19,7 +18,6 @@ def create_app() -> FastAPI:
     settings = Settings.from_env()
     app = FastAPI(title="branchLM API", version="0.0.0")
     app.state.settings = settings
-    app.state.llm_client = OpenRouterClient(settings)
     app.state.backboard_client = BackboardClient(settings)
     app.state.rate_limiter = SlidingWindowRateLimiter(settings)
     app.state.metrics = AppMetrics()
