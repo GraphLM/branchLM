@@ -188,13 +188,32 @@ export function useCanvas(): UseCanvasResult {
       },
       updateChatTitle: messaging.updateChatTitle,
       updateChatDraft: messaging.updateChatDraft,
-      sendChatMessage: messaging.sendChatMessage,
+      sendChatMessage: (chatId: string) => {
+        void (async () => {
+          try {
+            await graph.persistLayoutNow();
+          } catch {
+            // If layout save fails, generation likely misses latest context links.
+            return;
+          }
+          await messaging.sendChatMessage(chatId);
+        })();
+      },
       deleteMessage: graph.deleteMessageById,
+      deleteContextNode: graph.deleteContextNodeById,
+      updateContextNodeTitle: graph.updateContextNodeTitle,
+      uploadContextAsset: graph.uploadAssetToContextNode,
+      uploadContextText: graph.uploadTextToContextNode,
     }),
     [
       graph.deleteChatById,
+      graph.deleteContextNodeById,
       graph.deleteMessageById,
       graph.nodes,
+      graph.updateContextNodeTitle,
+      graph.persistLayoutNow,
+      graph.uploadAssetToContextNode,
+      graph.uploadTextToContextNode,
       messaging.sendChatMessage,
       messaging.updateChatDraft,
       messaging.updateChatTitle,
@@ -239,6 +258,7 @@ export function useCanvas(): UseCanvasResult {
     previewData,
     previewLoading,
     previewError,
+    contextNodesForPanel: panel.contextNodesForPanel,
     isLocked: graph.isLocked,
     toolbarPrimaryMode,
     actions,
@@ -252,12 +272,23 @@ export function useCanvas(): UseCanvasResult {
     onEdgeMouseEnter: graph.onEdgeMouseEnter,
     onEdgeMouseLeave: graph.onEdgeMouseLeave,
     onAutoLayout: graph.onAutoLayout,
+    onAddContextNode: () => {
+      if (!selectedWorkspaceId) return;
+      void graph.createContextNodeAt(
+        screenToFlowPosition({
+          x: window.innerWidth / 2 + 100,
+          y: window.innerHeight / 2 - 100,
+        }),
+      );
+    },
     onLockToggle: () => graph.setIsLocked((prev) => !prev),
     onPanelOpen: panel.onPanelOpen,
     onPanelClose: panel.onPanelClose,
     onPanelNodeHover: panel.onPanelNodeHover,
     onPanelNodeHoverEnd: panel.onPanelNodeHoverEnd,
     onPanelNodeClick: panel.onPanelNodeClick,
+    onPanelChatRename: messaging.updateChatTitle,
+    onPanelContextNodeRename: graph.updateContextNodeTitle,
     onWorkspaceSelect,
     onWorkspaceCreate,
     onWorkspaceRename,
@@ -271,7 +302,14 @@ export function useCanvas(): UseCanvasResult {
     onToolbarPrimaryAction: () => {
       if (!selectedWorkspaceId) return;
       if (selectedChat?.type === "chat" && selectedChat.data.draft.trim().length > 0) {
-        void messaging.sendChatMessage(selectedChat.id);
+        void (async () => {
+          try {
+            await graph.persistLayoutNow();
+          } catch {
+            return;
+          }
+          await messaging.sendChatMessage(selectedChat.id);
+        })();
         return;
       }
       if (selectedChat?.type === "chat") {

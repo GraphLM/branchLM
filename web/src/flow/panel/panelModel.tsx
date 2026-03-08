@@ -1,9 +1,11 @@
 import type { ReactElement } from "react";
 import type { NodeProps } from "@xyflow/react";
 import ChatNode from "../../nodes/chat/ChatNode";
+import ContextNode from "../../nodes/context/ContextNode";
 import MessageNode from "../../nodes/message/MessageNode";
 import type {
   ChatNode as ChatFlowNode,
+  ContextNode as ContextFlowNode,
   MessageNode as MessageFlowNode,
 } from "../types";
 
@@ -14,6 +16,7 @@ export function createNodeTypes(params: {
   onMessageSourceHandleActivate: (messageId: string) => void;
 }): {
   chat: (props: NodeProps<ChatFlowNode>) => ReactElement;
+  context: (props: NodeProps<ContextFlowNode>) => ReactElement;
   message: (props: NodeProps<MessageFlowNode>) => ReactElement;
 } {
   return {
@@ -25,6 +28,7 @@ export function createNodeTypes(params: {
         onChatTargetHandleActivate={params.onChatTargetHandleActivate}
       />
     ),
+    context: (props: NodeProps<ContextFlowNode>): ReactElement => <ContextNode {...props} />,
     message: (props: NodeProps<MessageFlowNode>): ReactElement => (
       <MessageNode
         {...props}

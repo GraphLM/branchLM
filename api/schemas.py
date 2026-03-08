@@ -28,6 +28,19 @@ class PatchChatBody(BaseModel):
     title: str
 
 
+class CreateContextNodeBody(BaseModel):
+    title: str
+    position: Position
+
+
+class PatchContextNodeBody(BaseModel):
+    title: str
+
+
+class CreateContextNodeTextAssetBody(BaseModel):
+    text: str
+
+
 class CreateMessageBody(BaseModel):
     role: Literal["user", "app"]
     text: str
@@ -89,6 +102,14 @@ class ContextEdgeIn(BaseModel):
     rank: int
 
 
+class ContextNodeEdgeIn(BaseModel):
+    fromContextNodeId: str
+    toChatId: str
+    rank: int
+
+
 class GraphLayoutPutBody(BaseModel):
     chatPositions: dict[str, Position]
     contextEdges: list[ContextEdgeIn]
+    contextNodePositions: dict[str, Position] = {}
+    contextNodeEdges: list[ContextNodeEdgeIn] = []

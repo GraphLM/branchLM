@@ -13,7 +13,16 @@ export type MessageNodeData = {
   loading?: boolean;
 };
 
+export type ContextNodeData = {
+  title: string;
+  workspaceId: string;
+  assetCount: number;
+  statusText?: string;
+  sourceLabel?: string;
+};
+
 export type ChatNode = Node<ChatNodeData, "chat">;
 export type MessageNode = Node<MessageNodeData, "message">;
+export type ContextNode = Node<ContextNodeData, "context">;
 
-export type AppNode = ChatNode | MessageNode;
+export type AppNode = ChatNode | MessageNode | ContextNode;

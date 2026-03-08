@@ -1,4 +1,4 @@
-import type { AppNode, ChatNode, MessageNode } from "./types";
+import type { AppNode, ChatNode, ContextNode, MessageNode } from "./types";
 
 export const CHAT_WIDTH = 440;
 export const CHAT_MIN_HEIGHT = 360;
@@ -10,6 +10,8 @@ export const CHAT_FOOTER_PADDING = 14;
 export const MESSAGE_WIDTH = 300;
 export const MESSAGE_HEIGHT = 62;
 export const MESSAGE_GAP_Y = 8;
+export const CONTEXT_NODE_WIDTH = 300;
+export const CONTEXT_NODE_HEIGHT = 180;
 
 const MESSAGE_TEXT_LINE_HEIGHT = 20;
 const MESSAGE_TEXT_CHAR_WIDTH = 7.2;
@@ -151,5 +153,31 @@ export function createMessageNode(params: {
     },
     draggable: false,
     zIndex: 1,
+  };
+}
+
+export function createContextNode(params: {
+  id: string;
+  workspaceId: string;
+  position: { x: number; y: number };
+  title: string;
+  assetCount?: number;
+  statusText?: string;
+  sourceLabel?: string;
+}): ContextNode {
+  return {
+    id: params.id,
+    type: "context",
+    position: params.position,
+    data: {
+      title: params.title,
+      workspaceId: params.workspaceId,
+      assetCount: params.assetCount ?? 0,
+      statusText: params.statusText,
+      sourceLabel: params.sourceLabel,
+    },
+    style: { width: CONTEXT_NODE_WIDTH, height: CONTEXT_NODE_HEIGHT },
+    dragHandle: ".context-drag-handle",
+    zIndex: 0,
   };
 }

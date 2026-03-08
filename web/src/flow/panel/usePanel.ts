@@ -42,6 +42,12 @@ export function usePanel(params: {
       .map((n) => ({ id: n.id, title: n.data.title }));
   }, [params.nodes]);
 
+  const contextNodesForPanel = useMemo(() => {
+    return params.nodes
+      .filter((n) => n.type === "context")
+      .map((n) => ({ id: n.id, title: n.data.title }));
+  }, [params.nodes]);
+
   const onPanelNodeClick = useCallback(
     (id: string) => {
       focusNodeInView({ getNode: params.getNode, setCenter: params.setCenter, nodeId: id });
@@ -52,6 +58,7 @@ export function usePanel(params: {
   return {
     panelOpen,
     chatsForPanel,
+    contextNodesForPanel,
     nodeTypes,
     onPanelOpen: () => setPanelOpen(true),
     onPanelClose: () => {

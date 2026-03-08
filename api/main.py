@@ -4,7 +4,8 @@ from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from routers import chats, graph, health, messages, workspaces
+from routers import backboard, chats, context_nodes, graph, health, messages, workspaces
+from services.backboard_service import BackboardClient
 from services.llm_service import OpenRouterClient
 from services.metrics import AppMetrics
 from services.rate_limit import SlidingWindowRateLimiter
@@ -19,6 +20,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="branchLM API", version="0.0.0")
     app.state.settings = settings
     app.state.llm_client = OpenRouterClient(settings)
+    app.state.backboard_client = BackboardClient(settings)
     app.state.rate_limiter = SlidingWindowRateLimiter(settings)
     app.state.metrics = AppMetrics()
 
@@ -56,6 +58,8 @@ def create_app() -> FastAPI:
     app.include_router(graph.router)
     app.include_router(chats.router)
     app.include_router(messages.router)
+    app.include_router(context_nodes.router)
+    app.include_router(backboard.router)
     return app
 
 
