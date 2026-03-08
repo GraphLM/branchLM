@@ -224,6 +224,8 @@ export function useCanvas(): UseCanvasResult {
     onPanelNodeHover: panel.onPanelNodeHover,
     onPanelNodeHoverEnd: panel.onPanelNodeHoverEnd,
     onPanelNodeClick: panel.onPanelNodeClick,
+    onPanelChatRename: messaging.updateChatTitle,
+    onPanelContextNodeRename: graph.updateContextNodeTitle,
     onWorkspaceSelect,
     onWorkspaceCreate,
     onWorkspaceRename,

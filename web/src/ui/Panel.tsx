@@ -27,6 +27,8 @@ type Props = {
   onNodeHover(id: string): void;
   onNodeHoverEnd(): void;
   onNodeClick(id: string): void;
+  onChatRename(chatId: string, title: string): void;
+  onContextNodeRename(contextNodeId: string, title: string): void;
   onWorkspaceSelect(workspaceId: string): void;
   onWorkspaceCreate(): void;
   onWorkspaceRename(workspaceId: string, title: string): void;
@@ -45,6 +47,8 @@ export default function Panel(props: Props) {
     onNodeHover,
     onNodeHoverEnd,
     onNodeClick,
+    onChatRename,
+    onContextNodeRename,
     onWorkspaceSelect,
     onWorkspaceCreate,
     onWorkspaceRename,
@@ -53,6 +57,8 @@ export default function Panel(props: Props) {
   const [collapsedSpaceIds, setCollapsedSpaceIds] = useState<Set<string>>(new Set());
   const [editingWorkspaceId, setEditingWorkspaceId] = useState<string | null>(null);
   const [workspaceTitleDraft, setWorkspaceTitleDraft] = useState("");
+  const [editingNodeKey, setEditingNodeKey] = useState<string | null>(null);
+  const [nodeTitleDraft, setNodeTitleDraft] = useState("");
 
   const handleWorkspaceDelete = (workspaceId: string, title: string) => {
     if (!window.confirm(`Delete workspace \"${title}\"?`)) return;
@@ -80,6 +86,35 @@ export default function Panel(props: Props) {
   const cancelWorkspaceEdit = () => {
     setEditingWorkspaceId(null);
     setWorkspaceTitleDraft("");
+  };
+
+  const beginNodeEdit = (kind: "chat" | "context", nodeId: string, currentTitle: string) => {
+    setEditingNodeKey(`${kind}:${nodeId}`);
+    setNodeTitleDraft(currentTitle);
+  };
+
+  const commitNodeEdit = (
+    kind: "chat" | "context",
+    nodeId: string,
+    currentTitle: string,
+  ) => {
+    const next = nodeTitleDraft.trim();
+    if (!next) {
+      setEditingNodeKey(null);
+      setNodeTitleDraft("");
+      return;
+    }
+    if (next !== currentTitle) {
+      if (kind === "chat") onChatRename(nodeId, next);
+      else onContextNodeRename(nodeId, next);
+    }
+    setEditingNodeKey(null);
+    setNodeTitleDraft("");
+  };
+
+  const cancelNodeEdit = () => {
+    setEditingNodeKey(null);
+    setNodeTitleDraft("");
   };
 
   const toggleSpaceCollapsed = (workspaceId: string) => {
@@ -221,18 +256,44 @@ export default function Panel(props: Props) {
                                   <ul className="space-y-1">
                                     {chats.map((chat) => (
                                       <li key={chat.id}>
-                                        <button
-                                          type="button"
-                                          className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-                                          title={chat.title}
-                                          onMouseEnter={() => onNodeHover(chat.id)}
-                                          onMouseLeave={() => onNodeHoverEnd()}
-                                          onFocus={() => onNodeHover(chat.id)}
-                                          onBlur={() => onNodeHoverEnd()}
-                                          onClick={() => onNodeClick(chat.id)}
-                                        >
-                                          <div className="truncate">{chat.title}</div>
-                                        </button>
+                                        {editingNodeKey === `chat:${chat.id}` ? (
+                                          <input
+                                            className="w-full rounded-lg border border-(--control-border) bg-(--control-bg) px-2 py-1 text-sm text-(--control-fg) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                            value={nodeTitleDraft}
+                                            onChange={(e) => setNodeTitleDraft(e.target.value)}
+                                            onBlur={() =>
+                                              commitNodeEdit("chat", chat.id, chat.title)
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                commitNodeEdit("chat", chat.id, chat.title);
+                                              }
+                                              if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                cancelNodeEdit();
+                                              }
+                                            }}
+                                            autoFocus
+                                          />
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                            title={chat.title}
+                                            onMouseEnter={() => onNodeHover(chat.id)}
+                                            onMouseLeave={() => onNodeHoverEnd()}
+                                            onFocus={() => onNodeHover(chat.id)}
+                                            onBlur={() => onNodeHoverEnd()}
+                                            onClick={() => onNodeClick(chat.id)}
+                                            onDoubleClick={(e) => {
+                                              e.preventDefault();
+                                              beginNodeEdit("chat", chat.id, chat.title);
+                                            }}
+                                          >
+                                            <div className="truncate">{chat.title}</div>
+                                          </button>
+                                        )}
                                       </li>
                                     ))}
                                   </ul>
@@ -244,18 +305,44 @@ export default function Panel(props: Props) {
                                   <ul className="space-y-1">
                                     {contextNodes.map((node) => (
                                       <li key={node.id}>
-                                        <button
-                                          type="button"
-                                          className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-                                          title={node.title}
-                                          onMouseEnter={() => onNodeHover(node.id)}
-                                          onMouseLeave={() => onNodeHoverEnd()}
-                                          onFocus={() => onNodeHover(node.id)}
-                                          onBlur={() => onNodeHoverEnd()}
-                                          onClick={() => onNodeClick(node.id)}
-                                        >
-                                          <div className="truncate">{node.title}</div>
-                                        </button>
+                                        {editingNodeKey === `context:${node.id}` ? (
+                                          <input
+                                            className="w-full rounded-lg border border-(--control-border) bg-(--control-bg) px-2 py-1 text-sm text-(--control-fg) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                            value={nodeTitleDraft}
+                                            onChange={(e) => setNodeTitleDraft(e.target.value)}
+                                            onBlur={() =>
+                                              commitNodeEdit("context", node.id, node.title)
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === "Enter") {
+                                                e.preventDefault();
+                                                commitNodeEdit("context", node.id, node.title);
+                                              }
+                                              if (e.key === "Escape") {
+                                                e.preventDefault();
+                                                cancelNodeEdit();
+                                              }
+                                            }}
+                                            autoFocus
+                                          />
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                            title={node.title}
+                                            onMouseEnter={() => onNodeHover(node.id)}
+                                            onMouseLeave={() => onNodeHoverEnd()}
+                                            onFocus={() => onNodeHover(node.id)}
+                                            onBlur={() => onNodeHoverEnd()}
+                                            onClick={() => onNodeClick(node.id)}
+                                            onDoubleClick={(e) => {
+                                              e.preventDefault();
+                                              beginNodeEdit("context", node.id, node.title);
+                                            }}
+                                          >
+                                            <div className="truncate">{node.title}</div>
+                                          </button>
+                                        )}
                                       </li>
                                     ))}
                                   </ul>

@@ -38,6 +38,8 @@ export default function Canvas({ onLogout }: Props) {
           onNodeHover={canvas.onPanelNodeHover}
           onNodeHoverEnd={canvas.onPanelNodeHoverEnd}
           onNodeClick={canvas.onPanelNodeClick}
+          onChatRename={canvas.onPanelChatRename}
+          onContextNodeRename={canvas.onPanelContextNodeRename}
           onWorkspaceSelect={canvas.onWorkspaceSelect}
           onWorkspaceCreate={canvas.onWorkspaceCreate}
           onWorkspaceRename={canvas.onWorkspaceRename}
