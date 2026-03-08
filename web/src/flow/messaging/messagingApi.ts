@@ -66,3 +66,64 @@ export async function generateReply(params: {
     appMessage: { id: string; chatId: string; ordinal: number; role: "app"; text: string };
   };
 }
+
+export type ContextPreviewMessageDTO = {
+  messageId: string;
+  chatId: string;
+  ordinal: number;
+  role: "user" | "app";
+  text: string;
+  source: "chat_history" | "branch_context";
+  tokenEstimate: number;
+  reason: "included" | "dropped_token_budget" | "dropped_message_limit";
+};
+
+export type ContextPreviewDTO = {
+  chatId: string;
+  model: string;
+  inputBudgetTokens: number;
+  promptTokens: number;
+  maxHistoryMessages: number;
+  included: ContextPreviewMessageDTO[];
+  excluded: ContextPreviewMessageDTO[];
+  summary: {
+    enabled: boolean;
+    included: boolean;
+    text: string | null;
+  };
+  counts: {
+    included: number;
+    excluded: number;
+  };
+  tokens: {
+    included: number;
+    excluded: number;
+  };
+  externalContext: {
+    included: boolean;
+    text: string | null;
+    blockedReason: string | null;
+    linkedNodes: number;
+    usedNodes: number;
+    pendingNodes: string[];
+    statusErrorNodes: string[];
+  };
+};
+
+export async function fetchContextPreview(params: {
+  workspaceId: string;
+  chatId: string;
+  prompt?: string;
+  model?: string;
+}): Promise<ContextPreviewDTO | null> {
+  const res = await apiFetch(
+    `/api/workspaces/${params.workspaceId}/chats/${params.chatId}/context-preview`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ prompt: params.prompt ?? "", model: params.model ?? null }),
+    },
+  );
+  if (!res.ok) return null;
+  return (await res.json()) as ContextPreviewDTO;
+}

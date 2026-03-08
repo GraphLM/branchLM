@@ -7,6 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from schemas import (
+    ContextPreviewBody,
     CreateChatBody,
     CreateMessageBody,
     CreateWorkspaceBody,
@@ -119,7 +120,7 @@ class ChatGenerationService:
         prompt = self._validate_prompt(body.text)
         self._enforce_rate_limit(user_id=user_id, client_ip=client_ip)
 
-        model = body.model or chat.get("model") or self._settings.openrouter_model
+        model = self._resolve_model(chat=chat, model_override=body.model)
         conversation, context_meta = self._build_conversation(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -128,7 +129,7 @@ class ChatGenerationService:
             model=model,
         )
         user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
-        if context_meta.get("blocked_reason"):
+        if self._should_block_on_external_context(context_meta):
             blocked_text = str(context_meta["blocked_reason"])
             app_message = self._store.create_message(
                 user_id, workspace_id, chat_id, "app", blocked_text
@@ -177,6 +178,100 @@ class ChatGenerationService:
             response["debug"] = context_meta
         return response
 
+    def _should_block_on_external_context(self, context_meta: dict[str, Any]) -> bool:
+        blocked_reason = str(context_meta.get("blocked_reason") or "").strip()
+        if not blocked_reason:
+            return False
+
+        pending_nodes = context_meta.get("pending_nodes") or []
+        status_error_nodes = context_meta.get("status_error_nodes") or []
+
+        # If retrieval found nothing relevant, continue with normal chat/branch context.
+        # Only block when linked docs are not currently usable.
+        if pending_nodes or status_error_nodes:
+            return True
+        return False
+
+    def preview_chat_context(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        chat_id: str,
+        body: ContextPreviewBody,
+    ) -> dict[str, Any]:
+        chat = self._require_chat(user_id=user_id, workspace_id=workspace_id, chat_id=chat_id)
+        prompt = _normalize_prompt(body.prompt or "")
+        if len(prompt) > self._settings.max_prompt_chars:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Message text exceeds {self._settings.max_prompt_chars} characters",
+            )
+
+        model = self._resolve_model(chat=chat, model_override=body.model)
+        plan = self._plan_conversation(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat_id,
+            prompt=prompt,
+            model=model,
+        )
+
+        included_messages = plan["included_messages"]
+        excluded_messages = plan["excluded_messages"]
+        summary_message = plan["summary_message"]
+        external_context = plan["external_context"]
+
+        return {
+            "chatId": chat_id,
+            "model": model,
+            "inputBudgetTokens": plan["input_budget"],
+            "promptTokens": plan["prompt_tokens"],
+            "maxHistoryMessages": self._settings.max_history_messages,
+            "included": [
+                self._to_preview_message(message, reason="included")
+                for message in included_messages
+            ],
+            "excluded": [
+                self._to_preview_message(
+                    message,
+                    reason=message.get("drop_reason", "dropped_token_budget"),
+                )
+                for message in excluded_messages
+            ],
+            "summary": {
+                "enabled": bool(excluded_messages) and self._settings.context_summary_max_chars > 0,
+                "included": summary_message is not None,
+                "text": summary_message["content"] if summary_message else None,
+            },
+            "counts": {
+                "included": len(included_messages),
+                "excluded": len(excluded_messages),
+            },
+            "tokens": {
+                "included": sum(int(m.get("token_estimate", 0)) for m in included_messages),
+                "excluded": sum(int(m.get("token_estimate", 0)) for m in excluded_messages),
+            },
+            "externalContext": {
+                "included": bool(external_context.get("text")),
+                "text": str(external_context.get("text") or "") or None,
+                "blockedReason": str(external_context.get("blocked_reason") or "") or None,
+                "linkedNodes": int(external_context.get("linked_nodes") or 0),
+                "usedNodes": int(external_context.get("used_nodes") or 0),
+                "pendingNodes": [
+                    str(node_title)
+                    for node_title in (external_context.get("pending_nodes") or [])
+                ],
+                "statusErrorNodes": [
+                    str(node_title)
+                    for node_title in (external_context.get("status_error_nodes") or [])
+                ],
+            },
+        }
+
+    def _resolve_model(self, *, chat: dict[str, Any], model_override: str | None) -> str:
+        return model_override or chat.get("model") or self._settings.openrouter_model
+
     def _require_chat(self, *, user_id: str, workspace_id: str, chat_id: str) -> dict[str, Any]:
         chat = self._store.get_chat(user_id, workspace_id, chat_id)
         if not chat:
@@ -205,7 +300,7 @@ class ChatGenerationService:
             headers={"Retry-After": str(decision.retry_after_seconds)},
         )
 
-    def _build_conversation(
+    def _plan_conversation(
         self,
         *,
         user_id: str,
@@ -213,12 +308,14 @@ class ChatGenerationService:
         chat_id: str,
         prompt: str,
         model: str,
-    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    ) -> dict[str, Any]:
         source_context, chat_history = self._build_spliced_history(
             user_id=user_id,
             workspace_id=workspace_id,
             chat_id=chat_id,
         )
+        source_context = self._with_token_estimates(source_context, model=model)
+        chat_history = self._with_token_estimates(chat_history, model=model)
         external_context = self._build_external_context(
             user_id=user_id,
             workspace_id=workspace_id,
@@ -238,8 +335,7 @@ class ChatGenerationService:
         max_history_messages = self._settings.max_history_messages
         remaining_message_slots = max_history_messages if max_history_messages > 0 else None
 
-        # Tier A: keep target chat history first (most relevant to immediate continuation).
-        selected_chat_history, used_chat_tokens, dropped_chat = self._select_messages_by_budget(
+        selected_chat_history, dropped_chat, used_chat_tokens = self._partition_messages_by_budget(
             messages=chat_history,
             available_tokens=available_for_history,
             remaining_slots=remaining_message_slots,
@@ -249,14 +345,11 @@ class ChatGenerationService:
         if remaining_message_slots is not None:
             remaining_message_slots -= len(selected_chat_history)
 
-        # Tier B: fill remaining budget with branch-spliced context.
-        selected_source_context, used_source_tokens, dropped_source = (
-            self._select_messages_by_budget(
-                messages=source_context,
-                available_tokens=available_for_history,
-                remaining_slots=remaining_message_slots,
-                model=model,
-            )
+        selected_source_context, dropped_source, used_source_tokens = self._partition_messages_by_budget(
+            messages=source_context,
+            available_tokens=available_for_history,
+            remaining_slots=remaining_message_slots,
+            model=model,
         )
         available_for_history -= used_source_tokens
         if remaining_message_slots is not None:
@@ -278,9 +371,40 @@ class ChatGenerationService:
             conversation.insert(0, {"role": "system", "content": str(external_context["text"])})
         conversation.append({"role": "user", "content": prompt})
 
-        dropped_count = len(dropped_source) + len(dropped_chat)
-        self._metrics.incr("context.history_selected", len(prior_messages))
-        self._metrics.incr("context.history_dropped", dropped_count)
+        return {
+            "conversation": conversation,
+            "included_messages": prior_messages,
+            "excluded_messages": dropped_source + dropped_chat,
+            "summary_message": summary_message,
+            "input_budget": input_budget,
+            "prompt_tokens": prompt_tokens,
+            "external_context": external_context,
+        }
+
+    def _build_conversation(
+        self,
+        *,
+        user_id: str,
+        workspace_id: str,
+        chat_id: str,
+        prompt: str,
+        model: str,
+    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
+        plan = self._plan_conversation(
+            user_id=user_id,
+            workspace_id=workspace_id,
+            chat_id=chat_id,
+            prompt=prompt,
+            model=model,
+        )
+        conversation = plan["conversation"]
+        included_messages = plan["included_messages"]
+        excluded_messages = plan["excluded_messages"]
+        prompt_tokens = plan["prompt_tokens"]
+        external_context = plan["external_context"]
+
+        self._metrics.incr("context.history_selected", len(included_messages))
+        self._metrics.incr("context.history_dropped", len(excluded_messages))
         self._metrics.incr("context.prompt_tokens_est", prompt_tokens)
 
         logger.info(
@@ -291,8 +415,8 @@ class ChatGenerationService:
             chat_id,
             model,
             prompt_tokens,
-            len(prior_messages),
-            dropped_count,
+            len(included_messages),
+            len(excluded_messages),
             prompt_tokens
             + sum(self._estimate_tokens(m["content"], model=model) for m in conversation[:-1]),
         )
@@ -406,21 +530,78 @@ class ChatGenerationService:
     def _build_spliced_history(
         self, *, user_id: str, workspace_id: str, chat_id: str
     ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+        workspace_messages = self._store.list_messages(user_id, workspace_id)
+        messages_by_id = {message["id"]: message for message in workspace_messages}
+
         # Source context snapshot is precomputed and persisted when graph edges are saved.
         source_context_rows = self._store.list_context_messages_for_chat(
             user_id, workspace_id, chat_id
         )
-        source_context = [
-            {"role": row["role"], "text": row["text"], "id": row.get("message_id", "")}
-            for row in source_context_rows
-        ]
+        source_context = []
+        for row in source_context_rows:
+            message_id = row.get("message_id", "")
+            source_message = messages_by_id.get(message_id)
+            source_context.append(
+                {
+                    "role": row["role"],
+                    "text": row["text"],
+                    "id": message_id,
+                    "chat_id": source_message.get("chat_id", "") if source_message else "",
+                    "ordinal": source_message.get("ordinal", -1) if source_message else -1,
+                    "source": "branch_context",
+                }
+            )
 
         chat_history_rows = self._store.list_messages_for_chat(user_id, workspace_id, chat_id)
         source_ids = {m.get("id") for m in source_context if m.get("id")}
         chat_history = [
-            message for message in chat_history_rows if message.get("id") not in source_ids
+            {
+                **message,
+                "source": "chat_history",
+            }
+            for message in chat_history_rows
+            if message.get("id") not in source_ids
         ]
-        return source_context, chat_history
+        if source_context:
+            return source_context, chat_history
+
+        # Backward-compatible fallback for environments that haven't migrated snapshot storage yet.
+        messages_by_chat: dict[str, list[dict[str, Any]]] = {}
+        for message in workspace_messages:
+            messages_by_chat.setdefault(message["chat_id"], []).append(message)
+        for chat_messages in messages_by_chat.values():
+            chat_messages.sort(key=lambda message: message["ordinal"])
+
+        context_edges = [
+            edge
+            for edge in self._store.list_context_edges(user_id, workspace_id)
+            if edge["to_chat_id"] == chat_id
+        ]
+        context_edges.sort(key=lambda edge: edge["rank"])
+
+        spliced_messages: list[dict[str, Any]] = []
+        seen_message_ids: set[str] = set()
+        for edge in context_edges:
+            source_message = messages_by_id.get(edge["from_message_id"])
+            if not source_message:
+                continue
+            include_until = source_message["ordinal"] - (
+                1 if source_message["role"] == "user" else 0
+            )
+            for message in messages_by_chat.get(source_message["chat_id"], []):
+                if message["ordinal"] > include_until:
+                    break
+                if message["id"] in seen_message_ids:
+                    continue
+                seen_message_ids.add(message["id"])
+                spliced_messages.append({**message, "source": "branch_context"})
+
+        chat_history = [
+            {**m, "source": "chat_history"}
+            for m in chat_history_rows
+            if m.get("id") not in seen_message_ids
+        ]
+        return spliced_messages, chat_history
 
     def _call_llm(self, conversation: list[dict[str, str]], *, model: str) -> str:
         if not self._backboard.enabled:
@@ -499,18 +680,51 @@ class ChatGenerationService:
             "content": message["text"],
         }
 
-    def _select_messages_by_budget(
+    def _to_preview_message(
+        self,
+        message: dict[str, Any],
+        *,
+        reason: str,
+    ) -> dict[str, Any]:
+        return {
+            "messageId": message.get("id", ""),
+            "chatId": message.get("chat_id", ""),
+            "ordinal": int(message.get("ordinal", -1)),
+            "role": message["role"],
+            "text": message["text"],
+            "source": message.get("source", "chat_history"),
+            "tokenEstimate": int(message.get("token_estimate", 0)),
+            "reason": reason,
+        }
+
+    def _with_token_estimates(
+        self,
+        messages: list[dict[str, Any]],
+        *,
+        model: str,
+    ) -> list[dict[str, Any]]:
+        return [
+            {
+                **message,
+                "token_estimate": self._estimate_tokens(message["text"], model=model),
+            }
+            for message in messages
+        ]
+
+    def _partition_messages_by_budget(
         self,
         *,
         messages: list[dict[str, Any]],
         available_tokens: int,
         remaining_slots: int | None,
         model: str,
-    ) -> tuple[list[dict[str, Any]], int, list[dict[str, Any]]]:
+    ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
         if available_tokens <= 0:
-            return [], 0, messages
+            dropped = [{**message, "drop_reason": "dropped_token_budget"} for message in messages]
+            return [], dropped, 0
         if remaining_slots is not None and remaining_slots <= 0:
-            return [], 0, messages
+            dropped = [{**message, "drop_reason": "dropped_message_limit"} for message in messages]
+            return [], dropped, 0
 
         selected_reversed: list[dict[str, Any]] = []
         dropped_reversed: list[dict[str, Any]] = []
@@ -518,19 +732,21 @@ class ChatGenerationService:
 
         for message in reversed(messages):
             if remaining_slots is not None and len(selected_reversed) >= remaining_slots:
-                dropped_reversed.append(message)
+                dropped_reversed.append({**message, "drop_reason": "dropped_message_limit"})
                 continue
 
-            message_tokens = self._estimate_tokens(message["text"], model=model)
+            message_tokens = int(message.get("token_estimate", 0))
+            if message_tokens <= 0:
+                message_tokens = self._estimate_tokens(message["text"], model=model)
             if used_tokens + message_tokens > available_tokens:
-                dropped_reversed.append(message)
+                dropped_reversed.append({**message, "drop_reason": "dropped_token_budget"})
                 continue
             selected_reversed.append(message)
             used_tokens += message_tokens
 
         selected = list(reversed(selected_reversed))
         dropped = list(reversed(dropped_reversed))
-        return selected, used_tokens, dropped
+        return selected, dropped, used_tokens
 
     def _build_overflow_summary(
         self,

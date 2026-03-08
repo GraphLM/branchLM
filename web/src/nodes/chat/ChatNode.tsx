@@ -57,6 +57,7 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
         />
       }
       onDelete={() => actions.deleteChat(id)}
+      onContextPreview={() => actions.openContextPreview(id)}
       onDraftChange={(nextDraft) => actions.updateChatDraft(id, nextDraft)}
       onSend={() => actions.sendChatMessage(id)}
       onTitleCommit={(nextTitle) => {

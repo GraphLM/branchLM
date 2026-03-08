@@ -1,6 +1,7 @@
 import type { Edge, NodeProps, OnConnect, OnConnectEnd, OnConnectStart, OnEdgesChange, OnNodesChange } from "@xyflow/react";
 import type { MouseEvent, ReactElement } from "react";
 import type { FlowActions } from "../actionsContext";
+import type { ContextPreviewDTO } from "../messaging/messagingApi";
 import type {
   AppNode,
   ChatNode as ChatFlowNode,
@@ -15,6 +16,11 @@ export type UseCanvasResult = {
   workspacesForPanel: Array<{ id: string; title: string }>;
   panelOpen: boolean;
   chatsForPanel: Array<{ id: string; title: string }>;
+  previewChatId: string | null;
+  previewChatTitle: string;
+  previewData: ContextPreviewDTO | null;
+  previewLoading: boolean;
+  previewError: string | null;
   contextNodesForPanel: Array<{ id: string; title: string }>;
   isLocked: boolean;
   toolbarPrimaryMode: "send" | "new-chat";
@@ -46,5 +52,6 @@ export type UseCanvasResult = {
   onWorkspaceCreate: () => void;
   onWorkspaceRename: (workspaceId: string, title: string) => void;
   onWorkspaceDelete: (workspaceId: string) => void;
+  onContextPreviewClose: () => void;
   onToolbarPrimaryAction: () => void;
 };

@@ -40,6 +40,7 @@ uv run uvicorn main:app --reload --host 0.0.0.0 --port 8000
 - `DELETE /api/workspaces/{workspaceId}/chats/{chatId}` delete chat (cascades)
 - `POST /api/workspaces/{workspaceId}/chats/{chatId}/messages` add message
 - `POST /api/workspaces/{workspaceId}/chats/{chatId}/generate` create user message + LLM reply
+- `POST /api/workspaces/{workspaceId}/chats/{chatId}/context-preview` preview included/excluded context without generating
 - `DELETE /api/workspaces/{workspaceId}/messages/{messageId}` delete message
 
 All workspace/graph/chat/message endpoints require:
