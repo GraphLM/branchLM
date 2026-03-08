@@ -3,7 +3,7 @@ from dataclasses import replace
 from fastapi.testclient import TestClient
 
 from main import create_app
-from services.backboard_service import BackboardDocumentResult
+from services.backboard_service import BackboardDocumentResult, BackboardDocumentStatus
 from services.llm_service import LLMServiceError
 from services.rate_limit import SlidingWindowRateLimiter
 from store.memory import MemoryStore
@@ -44,6 +44,14 @@ class FakeBackboardClient:
         assert thread_id
         assert prompt
         return "Candidate has 5+ years of software engineering experience."
+
+    def get_document_status(self, *, document_id: str) -> BackboardDocumentStatus:
+        assert document_id
+        return BackboardDocumentStatus(
+            document_id=document_id,
+            status="indexed",
+            status_message=None,
+        )
 
 
 class DisabledBackboardClient:
@@ -252,7 +260,10 @@ def test_chat_patch_and_delete() -> None:
 
     graph_resp = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
     assert graph_resp.status_code == 200
-    assert any(chat["id"] == chat_id and chat["title"] == "New title" for chat in graph_resp.json()["chats"])
+    assert any(
+        chat["id"] == chat_id and chat["title"] == "New title"
+        for chat in graph_resp.json()["chats"]
+    )
 
     delete_resp = client.delete(
         f"/api/workspaces/{workspace_id}/chats/{chat_id}",
@@ -260,7 +271,10 @@ def test_chat_patch_and_delete() -> None:
     )
     assert delete_resp.status_code == 200
 
-    graph_after_delete = client.get(f"/api/workspaces/{workspace_id}/graph", headers=DEV_AUTH_HEADERS)
+    graph_after_delete = client.get(
+        f"/api/workspaces/{workspace_id}/graph",
+        headers=DEV_AUTH_HEADERS,
+    )
     assert graph_after_delete.status_code == 200
     assert not any(chat["id"] == chat_id for chat in graph_after_delete.json()["chats"])
 
@@ -590,7 +604,7 @@ def test_context_node_allows_single_source_and_supports_pasted_text() -> None:
         headers=DEV_AUTH_HEADERS,
     )
     assert text_upload.status_code == 200
-    assert text_upload.json()["status"] == "processed"
+    assert text_upload.json()["status"] == "indexed"
 
     second_upload = client.post(
         f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/assets",
@@ -598,6 +612,35 @@ def test_context_node_allows_single_source_and_supports_pasted_text() -> None:
         headers=DEV_AUTH_HEADERS,
     )
     assert second_upload.status_code == 409
+
+
+def test_context_node_rejects_image_uploads_in_mvp() -> None:
+    app = create_app()
+    app.state.store = MemoryStore()
+    app.state.supabase_admin = None
+    app.state.settings = replace(
+        app.state.settings,
+        auth_dev_bypass=True,
+        backboard_api_key="test-key",
+    )
+    app.state.backboard_client = FakeBackboardClient()
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client, "Context Workspace")
+    create_node_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes",
+        json={"title": "Image source", "position": {"x": 15, "y": 25}},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert create_node_resp.status_code == 200
+    context_node_id = create_node_resp.json()["id"]
+
+    upload_resp = client.post(
+        f"/api/workspaces/{workspace_id}/context-nodes/{context_node_id}/assets",
+        files={"file": ("headshot.jpg", b"fake-jpg", "image/jpeg")},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert upload_resp.status_code == 400
 
 
 def test_generate_reply_uses_context_node_external_rag_context() -> None:
