@@ -132,7 +132,7 @@ class ChatGenerationService:
             model=model,
         )
         user_message = self._store.create_message(user_id, workspace_id, chat_id, "user", prompt)
-        if context_meta.get("blocked_reason"):
+        if self._should_block_on_external_context(context_meta):
             blocked_text = str(context_meta["blocked_reason"])
             app_message = self._store.create_message(
                 user_id, workspace_id, chat_id, "app", blocked_text
@@ -180,6 +180,20 @@ class ChatGenerationService:
         if self._settings.auth_dev_bypass:
             response["debug"] = context_meta
         return response
+
+    def _should_block_on_external_context(self, context_meta: dict[str, Any]) -> bool:
+        blocked_reason = str(context_meta.get("blocked_reason") or "").strip()
+        if not blocked_reason:
+            return False
+
+        pending_nodes = context_meta.get("pending_nodes") or []
+        status_error_nodes = context_meta.get("status_error_nodes") or []
+
+        # If retrieval found nothing relevant, continue with normal chat/branch context.
+        # Only block when linked docs are not currently usable.
+        if pending_nodes or status_error_nodes:
+            return True
+        return False
 
     def preview_chat_context(
         self,
