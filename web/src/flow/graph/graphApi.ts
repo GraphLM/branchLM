@@ -132,6 +132,21 @@ export async function deleteContextNode(params: {
   );
 }
 
+export async function updateContextNodeTitle(params: {
+  workspaceId: string;
+  contextNodeId: string;
+  title: string;
+}): Promise<void> {
+  await apiFetch(
+    `/api/workspaces/${params.workspaceId}/context-nodes/${params.contextNodeId}`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title: params.title }),
+    },
+  );
+}
+
 export type ContextNodeAssetDTO = {
   id: string;
   fileName: string;

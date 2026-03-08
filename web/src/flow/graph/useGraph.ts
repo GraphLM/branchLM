@@ -22,6 +22,7 @@ import {
   deleteMessage,
   fetchGraph,
   saveGraphLayout,
+  updateContextNodeTitle as updateContextNodeTitleApi,
   uploadContextNodeAsset,
   uploadContextNodeTextAsset,
 } from "./graphApi";
@@ -49,6 +50,21 @@ function persistCascadeDeletes(params: {
       await deleteChat({ workspaceId: params.workspaceId, chatId }).catch(() => {});
     }
   })();
+}
+
+function suggestTitleFromFileName(fileName: string): string {
+  const withoutExt = fileName.replace(/\.[a-z0-9]+$/i, "");
+  const cleaned = withoutExt.replace(/[_-]+/g, " ").replace(/\s+/g, " ").trim();
+  if (!cleaned) return "Context node";
+  return cleaned.length > 36 ? `${cleaned.slice(0, 36).trim()}...` : cleaned;
+}
+
+function suggestTitleFromText(text: string): string {
+  const firstLine = text.split("\n")[0]?.trim() ?? "";
+  const cleaned = firstLine.replace(/\s+/g, " ");
+  if (!cleaned) return "Context note";
+  const words = cleaned.split(" ").slice(0, 6).join(" ");
+  return words.length > 36 ? `${words.slice(0, 36).trim()}...` : words;
 }
 
 export function useGraph(params: {
@@ -146,10 +162,15 @@ export function useGraph(params: {
           );
         }
         for (const n of data.contextNodes ?? []) {
+          const status = (n.status ?? "").toLowerCase();
           const statusText =
-            n.status && n.status !== "indexed"
-              ? `Source: ${n.status}`
-              : n.statusMessage ?? undefined;
+            status === "indexed" || status === "ready" || status === "processed"
+              ? "Ready"
+              : status === "processing" || status === "pending"
+                ? "Preparing document..."
+                : status === "failed"
+                  ? n.statusMessage ?? "Could not prepare document"
+                  : n.statusMessage ?? undefined;
           nextNodes.push(
             createContextNode({
               id: n.id,
@@ -284,13 +305,31 @@ export function useGraph(params: {
     [params.workspaceId],
   );
 
+  const updateContextNodeTitle = useCallback(
+    (contextNodeId: string, title: string) => {
+      const workspaceId = params.workspaceId;
+      if (!workspaceId) return;
+      const normalized = title.trim();
+      if (!normalized) return;
+      setNodes((nodesSnapshot) =>
+        nodesSnapshot.map((n) =>
+          n.id === contextNodeId && n.type === "context"
+            ? { ...n, data: { ...n.data, title: normalized } }
+            : n,
+        ),
+      );
+      void updateContextNodeTitleApi({ workspaceId, contextNodeId, title: normalized }).catch(() => {});
+    },
+    [params.workspaceId],
+  );
+
   const createContextNodeAt = useCallback(
     async (position: { x: number; y: number }) => {
       const workspaceId = params.workspaceId;
       if (!workspaceId) return;
       const created = await createContextNodeApi({
         workspaceId,
-        title: "Context node",
+        title: "New context node",
         position,
       });
       if (!created) return;
@@ -333,11 +372,12 @@ export function useGraph(params: {
               ...n,
               data: {
                 ...n.data,
+                title: suggestTitleFromFileName(file.name),
                 assetCount: 1,
                 statusText:
                   created.status === "failed"
                     ? created.statusMessage ?? "Upload failed"
-                    : `Source: ${created.fileName} (${created.status})`,
+                    : "Ready",
               },
             };
           }),
@@ -378,11 +418,12 @@ export function useGraph(params: {
               ...n,
               data: {
                 ...n.data,
+                title: suggestTitleFromText(text),
                 assetCount: 1,
                 statusText:
                   created.status === "failed"
                     ? created.statusMessage ?? "Upload failed"
-                    : `Source: pasted text (${created.status})`,
+                    : "Ready",
               },
             };
           }),
@@ -470,6 +511,7 @@ export function useGraph(params: {
     deleteChatById,
     deleteMessageById,
     deleteContextNodeById,
+    updateContextNodeTitle,
     createContextNodeAt,
     uploadAssetToContextNode,
     uploadTextToContextNode,

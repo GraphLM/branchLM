@@ -10,8 +10,21 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
   const [busy, setBusy] = useState(false);
   const [textMode, setTextMode] = useState(false);
   const [textDraft, setTextDraft] = useState("");
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState(data.title);
   const inputRef = useRef<HTMLInputElement | null>(null);
   const hasSource = data.assetCount > 0;
+
+  const commitTitle = () => {
+    const next = titleDraft.trim();
+    if (!next) {
+      setEditingTitle(false);
+      setTitleDraft(data.title);
+      return;
+    }
+    if (next !== data.title) actions.updateContextNodeTitle(id, next);
+    setEditingTitle(false);
+  };
 
   return (
     <div
@@ -23,15 +36,38 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
       ].join(" ")}
     >
       <div className="context-drag-handle flex items-center justify-between cursor-grab">
-        <p className="text-sm font-semibold truncate">{data.title}</p>
+        {editingTitle ? (
+          <input
+            className="min-w-0 flex-1 rounded-md border border-(--chat-border) bg-(--canvas-bg) px-2 py-1 text-sm"
+            value={titleDraft}
+            onChange={(e) => setTitleDraft(e.target.value)}
+            onBlur={commitTitle}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commitTitle();
+              if (e.key === "Escape") {
+                setEditingTitle(false);
+                setTitleDraft(data.title);
+              }
+            }}
+            autoFocus
+          />
+        ) : (
+          <button
+            type="button"
+            className="min-w-0 flex-1 truncate text-left text-sm font-semibold hover:cursor-text"
+            onClick={() => {
+              setEditingTitle(true);
+              setTitleDraft(data.title);
+            }}
+          >
+            {data.title}
+          </button>
+        )}
         <NodeDeleteButton title="Delete context node" onClick={() => actions.deleteContextNode(id)} />
       </div>
 
-      <p className="mt-2 text-xs text-(--panel-muted)">
-        Source: {hasSource ? "configured" : "not configured"}
-      </p>
       <p className="text-xs text-(--panel-muted)">
-        {data.statusText ?? "Import one file or paste one text block for this node."}
+        {data.statusText ?? "Add one file or one text note for this node."}
       </p>
 
       <input
@@ -76,6 +112,12 @@ export default function ContextNodeComponent(props: NodeProps<ContextNode>) {
             rows={4}
             value={textDraft}
             onChange={(e) => setTextDraft(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                setTextMode(false);
+              }
+            }}
             placeholder="Paste text context here..."
           />
           <button

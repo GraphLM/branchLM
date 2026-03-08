@@ -8,6 +8,7 @@ export type FlowActions = {
   sendChatMessage(chatId: string): void;
   deleteMessage(messageId: string): void;
   deleteContextNode(contextNodeId: string): void;
+  updateContextNodeTitle(contextNodeId: string, title: string): void;
   uploadContextAsset(contextNodeId: string, file: File): Promise<void>;
   uploadContextText(contextNodeId: string, text: string): Promise<void>;
 };
