@@ -4,25 +4,20 @@ from fastapi.testclient import TestClient
 
 from main import create_app
 from services.backboard_service import BackboardDocumentResult, BackboardDocumentStatus
-from services.llm_service import LLMServiceError
 from services.rate_limit import SlidingWindowRateLimiter
 from store.memory import MemoryStore
 
 DEV_AUTH_HEADERS = {"Authorization": "Bearer dev-bypass:dGVzdEBleGFtcGxlLmNvbQ"}
 
 
-class FakeLLMClient:
-    def __init__(self, reply: str) -> None:
-        self.reply = reply
-        self.calls: list[list[dict[str, str]]] = []
-
-    def generate_reply(self, messages: list[dict[str, str]], *, model: str | None = None) -> str:
-        self.calls.append(messages)
-        return self.reply
-
-
 class FakeBackboardClient:
     enabled = True
+
+    def __init__(self, chat_reply: str = "reply", *, fail_generate: bool = False) -> None:
+        self.chat_reply = chat_reply
+        self.fail_generate = fail_generate
+        self.generate_calls: list[list[dict[str, str]]] = []
+        self.generate_web_search: list[bool] = []
 
     def ensure_assistant(self) -> str:
         return "assistant-1"
@@ -43,7 +38,22 @@ class FakeBackboardClient:
     def query_thread(self, *, thread_id: str, prompt: str) -> str:
         assert thread_id
         assert prompt
-        return "Candidate has 5+ years of software engineering experience."
+        if prompt.startswith("Using only the uploaded files in this thread"):
+            return "Candidate has 5+ years of software engineering experience."
+        return self.chat_reply
+
+    def generate_reply(
+        self,
+        messages: list[dict[str, str]],
+        *,
+        model: str | None = None,
+        web_search: bool = False,
+    ) -> str:
+        self.generate_calls.append(list(messages))
+        self.generate_web_search.append(web_search)
+        if self.fail_generate:
+            raise Exception("internal details should not leak")
+        return self.chat_reply
 
     def get_document_status(self, *, document_id: str) -> BackboardDocumentStatus:
         assert document_id
@@ -114,11 +124,11 @@ def test_workspaces_crud() -> None:
 def test_generate_reply_persists_user_and_app_messages() -> None:
     app = create_app()
     app.state.settings = replace(
-        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    fake_llm = FakeLLMClient("Real model reply")
-    app.state.llm_client = fake_llm
+    fake_backboard = FakeBackboardClient("Real model reply")
+    app.state.backboard_client = fake_backboard
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -136,21 +146,124 @@ def test_generate_reply_persists_user_and_app_messages() -> None:
     assert payload["userMessage"]["role"] == "user"
     assert payload["appMessage"]["text"] == "Real model reply"
     assert payload["appMessage"]["role"] == "app"
-    assert fake_llm.calls[0][-1] == {"role": "user", "content": "Hello there"}
+    assert fake_backboard.generate_calls[0][-1] == {"role": "user", "content": "Hello there"}
+
+
+def test_generate_reply_passes_web_search_flag_to_backboard() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Real model reply")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
+        json={"text": "Latest news please", "webSearch": True},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    assert fake_backboard.generate_web_search[-1] is True
+
+
+def test_generate_reply_guides_when_web_search_is_off_for_freshness_queries() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Real model reply")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/generate",
+        json={
+            "text": "Find one major AI news event from the last 7 days with source URL.",
+            "webSearch": False,
+        },
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert "Web search is currently off" in payload["appMessage"]["text"]
+    assert fake_backboard.generate_calls == []
+
+
+def test_generate_reply_uses_branch_context_without_forcing_web_search() -> None:
+    app = create_app()
+    app.state.settings = replace(
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
+    )
+    app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
+    fake_backboard = FakeBackboardClient("Branch explanation")
+    app.state.backboard_client = fake_backboard
+    client = TestClient(app)
+
+    workspace_id = _create_workspace(client)
+    source_chat_id = _create_chat(client, workspace_id, "Source")
+    target_chat_id = _create_chat(client, workspace_id, "Target")
+
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "user", "text": "Find one major AI news event from the last 7 days."},
+        headers=DEV_AUTH_HEADERS,
+    )
+    m1 = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{source_chat_id}/messages",
+        json={"role": "app", "text": "Anthropic launched Claude 2."},
+        headers=DEV_AUTH_HEADERS,
+    ).json()["id"]
+
+    graph_put = client.put(
+        f"/api/workspaces/{workspace_id}/graph/layout",
+        json={
+            "chatPositions": {},
+            "contextEdges": [
+                    {
+                        "fromMessageId": m1,
+                        "toChatId": target_chat_id,
+                        "rank": 0,
+                    }
+                ],
+            },
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert graph_put.status_code == 200
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{target_chat_id}/generate",
+        json={"text": "explain the news in layman terms", "webSearch": False},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    assert resp.status_code == 200
+    assert "Web search is currently off" not in resp.json()["appMessage"]["text"]
+    assert fake_backboard.generate_calls != []
 
 
 def test_generate_reply_rate_limits_requests() -> None:
     app = create_app()
     app.state.settings = replace(
         app.state.settings,
-        openrouter_api_key="test-key",
+        backboard_api_key="test-key",
         auth_dev_bypass=True,
         rate_limit_per_minute=10,
         rate_limit_burst=1,
         rate_limit_burst_window_seconds=60,
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    app.state.llm_client = FakeLLMClient("reply")
+    app.state.backboard_client = FakeBackboardClient("reply")
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -176,12 +289,12 @@ def test_generate_reply_rejects_empty_or_oversized_input() -> None:
     app = create_app()
     app.state.settings = replace(
         app.state.settings,
-        openrouter_api_key="test-key",
+        backboard_api_key="test-key",
         auth_dev_bypass=True,
         max_prompt_chars=5,
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    app.state.llm_client = FakeLLMClient("reply")
+    app.state.backboard_client = FakeBackboardClient("reply")
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -202,19 +315,42 @@ def test_generate_reply_rejects_empty_or_oversized_input() -> None:
     assert long_resp.status_code == 400
 
 
-def test_generate_reply_surfaces_safe_provider_errors() -> None:
-    class SafeFailLLMClient:
-        def generate_reply(
-            self, messages: list[dict[str, str]], *, model: str | None = None
-        ) -> str:
-            raise Exception("internal details should not leak")
+def test_context_preview_returns_included_messages() -> None:
+    app = create_app()
+    app.state.settings = replace(app.state.settings, auth_dev_bypass=True)
+    client = TestClient(app)
 
+    workspace_id = _create_workspace(client)
+    chat_id = _create_chat(client, workspace_id)
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+        json={"role": "user", "text": "hello"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/messages",
+        json={"role": "app", "text": "hi there"},
+        headers=DEV_AUTH_HEADERS,
+    )
+
+    resp = client.post(
+        f"/api/workspaces/{workspace_id}/chats/{chat_id}/context-preview",
+        json={"prompt": "what did we discuss?"},
+        headers=DEV_AUTH_HEADERS,
+    )
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert payload["chatId"] == chat_id
+    assert payload["counts"]["included"] >= 2
+
+
+def test_generate_reply_surfaces_safe_provider_errors() -> None:
     app = create_app()
     app.state.settings = replace(
-        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    app.state.llm_client = SafeFailLLMClient()
+    app.state.backboard_client = FakeBackboardClient("reply", fail_generate=True)
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -282,11 +418,11 @@ def test_chat_patch_and_delete() -> None:
 def test_context_splicing_from_user_message_excludes_the_target_user_message() -> None:
     app = create_app()
     app.state.settings = replace(
-        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    fake_llm = FakeLLMClient("reply")
-    app.state.llm_client = fake_llm
+    fake_backboard = FakeBackboardClient("reply")
+    app.state.backboard_client = fake_backboard
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -333,8 +469,8 @@ def test_context_splicing_from_user_message_excludes_the_target_user_message() -
     )
     assert generate_resp.status_code == 200
 
-    assert fake_llm.calls
-    assert fake_llm.calls[-1] == [
+    assert fake_backboard.generate_calls
+    assert fake_backboard.generate_calls[-1] == [
         {"role": "user", "content": "u0"},
         {"role": "assistant", "content": "a0"},
         {"role": "user", "content": "new question"},
@@ -344,11 +480,11 @@ def test_context_splicing_from_user_message_excludes_the_target_user_message() -
 def test_context_splicing_from_app_message_includes_the_target_app_message() -> None:
     app = create_app()
     app.state.settings = replace(
-        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    fake_llm = FakeLLMClient("reply")
-    app.state.llm_client = fake_llm
+    fake_backboard = FakeBackboardClient("reply")
+    app.state.backboard_client = fake_backboard
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -400,8 +536,8 @@ def test_context_splicing_from_app_message_includes_the_target_app_message() -> 
     )
     assert generate_resp.status_code == 200
 
-    assert fake_llm.calls
-    assert fake_llm.calls[-1] == [
+    assert fake_backboard.generate_calls
+    assert fake_backboard.generate_calls[-1] == [
         {"role": "user", "content": "u0"},
         {"role": "assistant", "content": "a0"},
         {"role": "user", "content": "u1"},
@@ -414,7 +550,7 @@ def test_generate_reply_token_budget_prioritizes_target_chat_history() -> None:
     app = create_app()
     app.state.settings = replace(
         app.state.settings,
-        openrouter_api_key="test-key",
+        backboard_api_key="test-key",
         auth_dev_bypass=True,
         max_history_messages=20,
         model_context_window_tokens=80,
@@ -424,8 +560,8 @@ def test_generate_reply_token_budget_prioritizes_target_chat_history() -> None:
         context_summary_max_chars=0,
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    fake_llm = FakeLLMClient("reply")
-    app.state.llm_client = fake_llm
+    fake_backboard = FakeBackboardClient("reply")
+    app.state.backboard_client = fake_backboard
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -475,35 +611,19 @@ def test_generate_reply_token_budget_prioritizes_target_chat_history() -> None:
         headers=DEV_AUTH_HEADERS,
     )
     assert generate_resp.status_code == 200
-    sent = fake_llm.calls[-1]
+    sent = fake_backboard.generate_calls[-1]
 
     assert {"role": "assistant", "content": "target app message kept"} in sent
     assert not any("source app message that should be dropped first" == m["content"] for m in sent)
 
 
-def test_generate_reply_retries_once_when_context_overflowed() -> None:
-    class ContextOverflowThenSuccess:
-        def __init__(self) -> None:
-            self.calls: list[list[dict[str, str]]] = []
-
-        def generate_reply(
-            self, messages: list[dict[str, str]], *, model: str | None = None
-        ) -> str:
-            self.calls.append(messages)
-            if len(self.calls) == 1:
-                raise LLMServiceError(
-                    "The prompt exceeded the model context window.",
-                    code="context_length_exceeded",
-                )
-            return "Recovered response"
-
+def test_generate_reply_surfaces_backboard_service_errors() -> None:
     app = create_app()
     app.state.settings = replace(
-        app.state.settings, openrouter_api_key="test-key", auth_dev_bypass=True
+        app.state.settings, auth_dev_bypass=True, backboard_api_key="test-key"
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    flaky_llm = ContextOverflowThenSuccess()
-    app.state.llm_client = flaky_llm
+    app.state.backboard_client = FakeBackboardClient("reply", fail_generate=True)
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -521,10 +641,8 @@ def test_generate_reply_retries_once_when_context_overflowed() -> None:
         json={"text": "new prompt"},
         headers=DEV_AUTH_HEADERS,
     )
-    assert resp.status_code == 200
-    assert resp.json()["appMessage"]["text"] == "Recovered response"
-    assert len(flaky_llm.calls) == 2
-    assert len(flaky_llm.calls[1]) < len(flaky_llm.calls[0])
+    assert resp.status_code == 502
+    assert resp.json()["detail"] == "The language model is temporarily unavailable."
 
 
 def test_delete_workspace_cascades_graph_data() -> None:
@@ -649,13 +767,12 @@ def test_generate_reply_uses_context_node_external_rag_context() -> None:
     app.state.supabase_admin = None
     app.state.settings = replace(
         app.state.settings,
-        openrouter_api_key="test-key",
         auth_dev_bypass=True,
         backboard_api_key="test-key",
     )
     app.state.rate_limiter = SlidingWindowRateLimiter(app.state.settings)
-    app.state.llm_client = FakeLLMClient("reply")
-    app.state.backboard_client = FakeBackboardClient()
+    fake_backboard = FakeBackboardClient("reply")
+    app.state.backboard_client = fake_backboard
     client = TestClient(app)
 
     workspace_id = _create_workspace(client)
@@ -700,7 +817,7 @@ def test_generate_reply_uses_context_node_external_rag_context() -> None:
     )
     assert generate_resp.status_code == 200
 
-    sent = app.state.llm_client.calls[-1]
+    sent = fake_backboard.generate_calls[-1]
     assert any(
         m["role"] == "system" and "5+ years" in m["content"]
         for m in sent

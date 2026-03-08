@@ -188,6 +188,7 @@ export function useCanvas(): UseCanvasResult {
       },
       updateChatTitle: messaging.updateChatTitle,
       updateChatDraft: messaging.updateChatDraft,
+      toggleChatWebSearch: messaging.toggleChatWebSearch,
       sendChatMessage: (chatId: string) => {
         void (async () => {
           try {
@@ -217,6 +218,7 @@ export function useCanvas(): UseCanvasResult {
       messaging.sendChatMessage,
       messaging.updateChatDraft,
       messaging.updateChatTitle,
+      messaging.toggleChatWebSearch,
       selectedWorkspaceId,
     ],
   );

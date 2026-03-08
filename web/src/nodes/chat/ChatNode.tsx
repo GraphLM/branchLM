@@ -21,6 +21,7 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
       title={data.title}
       draft={data.draft}
       focusToken={data.focusToken}
+      webSearchEnabled={Boolean(data.webSearchEnabled)}
       selected={selected}
       glow={hoveredNodeId === id}
       targetHandle={
@@ -59,6 +60,7 @@ export default function ChatNodeComponent(props: NodeProps<ChatNode> & ExtraProp
       onDelete={() => actions.deleteChat(id)}
       onContextPreview={() => actions.openContextPreview(id)}
       onDraftChange={(nextDraft) => actions.updateChatDraft(id, nextDraft)}
+      onToggleWebSearch={() => actions.toggleChatWebSearch(id)}
       onSend={() => actions.sendChatMessage(id)}
       onTitleCommit={(nextTitle) => {
         if (nextTitle !== data.title) actions.updateChatTitle(id, nextTitle);

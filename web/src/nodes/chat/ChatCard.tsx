@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { BotMessageSquare } from "lucide-react";
+import { BotMessageSquare, Globe } from "lucide-react";
 import NodeDeleteButton from "../../ui/NodeDeleteButton";
 import SendButton from "../../ui/SendButton";
 
@@ -9,10 +9,12 @@ type Props = {
   selected: boolean;
   glow?: boolean;
   focusToken?: number;
+  webSearchEnabled?: boolean;
   targetHandle?: ReactNode;
   onDelete(): void;
   onContextPreview(): void;
   onDraftChange(nextDraft: string): void;
+  onToggleWebSearch(): void;
   onSend(): void;
   onTitleCommit(nextTitle: string): void;
 };
@@ -24,10 +26,12 @@ export default function ChatCard(props: Props) {
     selected,
     glow = false,
     focusToken,
+    webSearchEnabled = false,
     targetHandle,
     onDelete,
     onContextPreview,
     onDraftChange,
+    onToggleWebSearch,
     onSend,
     onTitleCommit,
   } = props;
@@ -142,6 +146,27 @@ export default function ChatCard(props: Props) {
         {targetHandle}
 
         <div className="absolute left-2 right-2 bottom-2 flex items-stretch rounded-xl border border-(--control-border) bg-(--control-bg) px-2 py-1">
+          <button
+            type="button"
+            className={[
+              "nodrag mr-1 rounded-lg border border-transparent bg-transparent p-2 transition-colors cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover)",
+              webSearchEnabled
+                ? "text-(--control-fg)"
+                : "text-(--control-placeholder)",
+            ].join(" ")}
+            title={webSearchEnabled ? "Web search on (Auto)" : "Web search off"}
+            aria-label={webSearchEnabled ? "Disable web search" : "Enable web search"}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleWebSearch();
+            }}
+          >
+            <Globe size={14} />
+          </button>
           <textarea
             ref={draftInputRef}
             rows={1}

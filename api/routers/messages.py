@@ -39,7 +39,6 @@ def generate_chat_reply(
 ) -> dict:
     service = ChatGenerationService(
         store=store,
-        llm_client=request.app.state.llm_client,
         rate_limiter=request.app.state.rate_limiter,
         settings=request.app.state.settings,
         metrics=request.app.state.metrics,
@@ -66,7 +65,6 @@ def preview_chat_context(
 ) -> dict:
     service = ChatGenerationService(
         store=store,
-        llm_client=request.app.state.llm_client,
         rate_limiter=request.app.state.rate_limiter,
         settings=request.app.state.settings,
         metrics=request.app.state.metrics,
