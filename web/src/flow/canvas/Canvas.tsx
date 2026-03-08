@@ -32,6 +32,7 @@ export default function Canvas({ onLogout }: Props) {
           workspaces={canvas.workspacesForPanel}
           selectedWorkspaceId={canvas.selectedWorkspaceId}
           chats={canvas.chatsForPanel}
+          contextNodes={canvas.contextNodesForPanel}
           onOpen={canvas.onPanelOpen}
           onClose={canvas.onPanelClose}
           onNodeHover={canvas.onPanelNodeHover}

@@ -15,6 +15,7 @@ export type UseCanvasResult = {
   workspacesForPanel: Array<{ id: string; title: string }>;
   panelOpen: boolean;
   chatsForPanel: Array<{ id: string; title: string }>;
+  contextNodesForPanel: Array<{ id: string; title: string }>;
   isLocked: boolean;
   toolbarPrimaryMode: "send" | "new-chat";
   actions: FlowActions;

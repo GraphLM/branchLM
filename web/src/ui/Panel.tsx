@@ -11,11 +11,17 @@ export type PanelChatItem = {
   title: string;
 };
 
+export type PanelContextNodeItem = {
+  id: string;
+  title: string;
+};
+
 type Props = {
   open: boolean;
   workspaces: PanelWorkspaceItem[];
   selectedWorkspaceId: string | null;
   chats: PanelChatItem[];
+  contextNodes: PanelContextNodeItem[];
   onOpen(): void;
   onClose(): void;
   onNodeHover(id: string): void;
@@ -33,6 +39,7 @@ export default function Panel(props: Props) {
     workspaces,
     selectedWorkspaceId,
     chats,
+    contextNodes,
     onOpen,
     onClose,
     onNodeHover,
@@ -204,27 +211,57 @@ export default function Panel(props: Props) {
                         </div>
 
                         {isSelected && !isCollapsed ? (
-                          chats.length === 0 ? (
-                            <div className="ml-5 mt-1 px-2 py-1 text-sm text-(--panel-muted)">No chats yet.</div>
+                          chats.length === 0 && contextNodes.length === 0 ? (
+                            <div className="ml-5 mt-1 px-2 py-1 text-sm text-(--panel-muted)">No nodes yet.</div>
                           ) : (
-                            <ul className="ml-5 mt-1 space-y-1 border-l border-(--panel-border) pl-3">
-                              {chats.map((chat) => (
-                                <li key={chat.id}>
-                                  <button
-                                    type="button"
-                                    className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
-                                    title={chat.title}
-                                    onMouseEnter={() => onNodeHover(chat.id)}
-                                    onMouseLeave={() => onNodeHoverEnd()}
-                                    onFocus={() => onNodeHover(chat.id)}
-                                    onBlur={() => onNodeHoverEnd()}
-                                    onClick={() => onNodeClick(chat.id)}
-                                  >
-                                    <div className="truncate">{chat.title}</div>
-                                  </button>
-                                </li>
-                              ))}
-                            </ul>
+                            <div className="ml-5 mt-1 border-l border-(--panel-border) pl-3">
+                              {chats.length > 0 ? (
+                                <>
+                                  <p className="px-2 py-1 text-xs text-(--panel-muted)">Chats</p>
+                                  <ul className="space-y-1">
+                                    {chats.map((chat) => (
+                                      <li key={chat.id}>
+                                        <button
+                                          type="button"
+                                          className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                          title={chat.title}
+                                          onMouseEnter={() => onNodeHover(chat.id)}
+                                          onMouseLeave={() => onNodeHoverEnd()}
+                                          onFocus={() => onNodeHover(chat.id)}
+                                          onBlur={() => onNodeHoverEnd()}
+                                          onClick={() => onNodeClick(chat.id)}
+                                        >
+                                          <div className="truncate">{chat.title}</div>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </>
+                              ) : null}
+                              {contextNodes.length > 0 ? (
+                                <>
+                                  <p className="mt-2 px-2 py-1 text-xs text-(--panel-muted)">Context Nodes</p>
+                                  <ul className="space-y-1">
+                                    {contextNodes.map((node) => (
+                                      <li key={node.id}>
+                                        <button
+                                          type="button"
+                                          className="w-full rounded-xl border border-transparent px-2 py-1 text-left text-sm text-(--panel-fg) hover:cursor-pointer hover:border-(--control-border-hover) hover:bg-(--control-bg-hover) focus:outline-none focus:ring-2 focus:ring-(--focus-ring)"
+                                          title={node.title}
+                                          onMouseEnter={() => onNodeHover(node.id)}
+                                          onMouseLeave={() => onNodeHoverEnd()}
+                                          onFocus={() => onNodeHover(node.id)}
+                                          onBlur={() => onNodeHoverEnd()}
+                                          onClick={() => onNodeClick(node.id)}
+                                        >
+                                          <div className="truncate">{node.title}</div>
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </>
+                              ) : null}
+                            </div>
                           )
                         ) : null}
                       </li>
