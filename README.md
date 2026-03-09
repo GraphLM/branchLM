@@ -136,6 +136,68 @@ supabase migration new add_some_table
 supabase db push
 ```
 
+## Deploy (Netlify + Google Cloud Run)
+
+This repo is configured for:
+
+- `web/` on Netlify (via `netlify.toml`)
+- `api/` on Google Cloud Run (via `api/Dockerfile`)
+
+### 1) Deploy FastAPI to Cloud Run
+
+Set your project and region:
+
+```bash
+gcloud config set project branchlm
+gcloud config set run/region us-central1
+gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com
+```
+
+Deploy backend from source:
+
+```bash
+gcloud run deploy branchlm-api \
+  --source ./api \
+  --allow-unauthenticated \
+  --region us-central1 \
+  --set-env-vars SUPABASE_URL=YOUR_SUPABASE_URL,SUPABASE_SERVICE_ROLE_KEY=YOUR_SERVICE_ROLE_KEY,OPENROUTER_API_KEY=YOUR_OPENROUTER_API_KEY,AUTH_DEV_BYPASS=false
+```
+
+Get the deployed backend URL:
+
+```bash
+gcloud run services describe branchlm-api --region us-central1 --format='value(status.url)'
+```
+
+### 2) Deploy frontend to Netlify
+
+Netlify build settings for this repo are already in `netlify.toml`.
+
+Set these environment variables in Netlify:
+
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+- `VITE_API_BASE_URL` = your Cloud Run service URL from step 1
+- `VITE_AUTH_DEV_BYPASS` = `false`
+
+Then deploy from this repository (Netlify UI or CLI).
+
+### 3) Update backend CORS after Netlify URL is known
+
+After first Netlify deploy, update Cloud Run CORS to include the Netlify site origin:
+
+```bash
+gcloud run services update branchlm-api \
+  --region us-central1 \
+  --update-env-vars "^##^API_CORS_ORIGINS=https://YOUR_SITE.netlify.app,http://localhost:5173,http://127.0.0.1:5173"
+```
+
+### 4) Verify
+
+- Backend health: `GET <cloud-run-url>/api/health`
+- Frontend loads and can list/create workspaces
+- Supabase OTP login works in deployed frontend
+
 ## API Summary
 
 See `api/README.md` for endpoint details. Key routes include:
